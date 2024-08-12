@@ -1,0 +1,17 @@
+{
+  "name": "wf-upload",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "examples",
+    "docs"
+  ],
+  "scripts": {
+    "dev": "pnpm --filter wf-upload-examples run dev",
+    "docs:dev": "pnpm --filter wf-upload-docs run docs:dev",
+    "docs:build": "pnpm --filter wf-upload-docs run docs:build",
+    "docs:preview": "pnpm --filter wf-upload-docs run docs:preview"
+  }
+}
