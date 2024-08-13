@@ -1,5 +1,5 @@
 import { calcChunkHash } from './chunk'
-import type { Chunk } from './chunk'
+import type { Chunk } from './type';
 
 onmessage = function (e) {
   const chunks = e.data as Chunk[]

@@ -1,13 +1,7 @@
 import SparkMD5 from "spark-md5";
 import { EventEmitter } from "@wf-upload/utils";
-import type { Chunk } from "./chunk";
 import { createChunk } from "./chunk";
-
-// 分片的相关事件
-// chunks: 一部分分片产生了
-// wholeHash: 整个文件的hash计算完成
-// drain: 所有分片处理完成
-export type ChunkSplitorEvents = "chunks" | "wholeHash" | "drain";
+import type { Chunk, ChunkSplitorEvents } from './type';
 
 export abstract class ChunkSplitor extends EventEmitter<ChunkSplitorEvents> {
   protected chunkSize: number; // 分片大小（单位字节）

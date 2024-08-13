@@ -1,6 +1,6 @@
 import { EventEmitter } from "@wf-upload/utils";
-import type { Chunk } from "./chunk";
 import { ChunkSplitor } from "./ChunkSplitor";
+import type { Chunk } from './type';
 
 export class MultiThreadSplitor extends ChunkSplitor {
   private workers: Worker[] = new Array(navigator.hardwareConcurrency || 4)

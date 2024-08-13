@@ -1,4 +1,4 @@
-import type { Chunk } from "./chunk";
+import type { Chunk } from './type';
 import { ChunkSplitor } from "./ChunkSplitor";
 import { MultiThreadSplitor } from "./MutilThreadSplitor";
 import { Task, TaskQueue } from "@wf-upload/utils";
