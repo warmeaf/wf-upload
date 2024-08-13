@@ -41,7 +41,13 @@ importers:
       '@types/spark-md5': 3.0.4
       typescript: 5.5.4
 
-  packages/server:
+  packages/utils:
+    specifiers:
+      typescript: ^5.5.3
+    devDependencies:
+      typescript: 5.5.4
+
+  server:
     specifiers:
       '@nestjs/cli': ^10.0.0
       '@nestjs/common': ^10.0.0
@@ -96,12 +102,6 @@ importers:
       ts-loader: 9.5.1_typescript@5.5.4
       ts-node: 10.9.2_qjxsobs6o7uata6rquepl55wee
       tsconfig-paths: 4.2.0
-      typescript: 5.5.4
-
-  packages/utils:
-    specifiers:
-      typescript: ^5.5.3
-    devDependencies:
       typescript: 5.5.4
 
 packages:
