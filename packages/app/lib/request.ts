@@ -78,6 +78,9 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
     this.emit('progress', this.uploadedSize, this.file.size)
     if (this.uploadedSize === this.file.size) {
       console.log('分片已经上传完成，开始合并文件')
+      // 调用接口合并文件
+      // 返回值包括文件合并的结果和文件访问路径
+      this.emit('end')
     }
   }
 
