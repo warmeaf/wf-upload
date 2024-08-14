@@ -6,10 +6,13 @@ import {
   Inject,
   Headers,
   Body,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Express, Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { UniqueCodeService } from '../unique-code/unique-code.service';
-import type { Chunk, BaseHeader, PatchHashHeader } from './file.dto';
+import type { Chunk, BaseHeader } from './file.dto';
 
 @Controller('file')
 export class FileController {
@@ -27,15 +30,21 @@ export class FileController {
   }
 
   // hash 校验
-  @Head('patchHash')
-  patchHash(
-    @Res() response: Response,
-    @Headers() headers: PatchHashHeader,
-  ): void {
-    const token = headers['upload-file-token'];
+  @Post('patchHash')
+  patchHash(@Res() response: Response, @Body() body): void {
+    const { token, hash, type } = body;
     const vaid = this.uniqueCodeService.verifyUniqueCode(token);
     if (vaid) {
-      response.status(200).send();
+      if (type === 'chunk') {
+        response.status(200).send({
+          hasFile: false,
+        });
+      } else {
+        response.status(200).send({
+          hasFile: false,
+          rest: [[200, 300]],
+        });
+      }
     } else {
       response.status(403).send();
     }
@@ -43,11 +52,17 @@ export class FileController {
 
   // 上传分片
   @Post('uploadChunk')
-  uploadChunk(@Body() chunk: Chunk, @Headers() headers: BaseHeader): void {
-    const token = headers['upload-file-token'];
-    const vaid = this.uniqueCodeService.verifyUniqueCode(token);
-    console.log(vaid);
-    console.log(chunk.blob);
+  @UseInterceptors(FileInterceptor('blob'))
+  uploadChunk(
+    @Res() response: Response,
+    @Body() chunk: Chunk,
+    @UploadedFile() blob: Express.Multer.File,
+  ): void {
+    // console.log('uploadChunk', chunk);
+    // console.log('uploadChunk', blob);
+    response.status(200).send({
+      status: 'ok',
+    });
   }
 
   // 合并文件

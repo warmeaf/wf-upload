@@ -1,17 +1,17 @@
-import { EventEmitter } from "./EventEmitter";
+import { EventEmitter } from './EventEmitter'
 
 // 任务构造器
 export class Task {
-  fn: Function; // 任务关联的执行函数
-  payload?: any; // 任务关联的其他信息
+  fn: Function // 任务关联的执行函数
+  payload?: any // 任务关联的其他信息
   constructor(fn: Function, payload?: any) {
-    this.fn = fn;
-    this.payload = payload;
+    this.fn = fn
+    this.payload = payload
   }
 
   // 执行任务
   run() {
-    return this.fn(this.payload);
+    return this.fn(this.payload)
   }
 }
 
@@ -25,75 +25,75 @@ export class Task {
 
 // 可并发执行的任务队列
 export class TaskQueue extends EventEmitter<
-  "start" | "pause" | "drain" | "error"
+  'start' | 'pause' | 'drain' | 'error'
 > {
-  private tasks: Task[] = [];
-  private currentCount = 0;
-  private status: "paused" | "running" = "paused";
-  private concurrency: number = 4;
+  private tasks: Task[] = []
+  private currentCount = 0
+  private status: 'paused' | 'running' = 'paused'
+  private concurrency: number = 4
 
   constructor(concurrency: number = 4) {
-    super();
-    this.concurrency = concurrency;
+    super()
+    this.concurrency = concurrency
   }
 
   add(...tasks: Task[]) {
-    this.tasks.push(...tasks);
-    if (this.status === "running") {
-      this.runNext();
+    this.tasks.push(...tasks)
+    if (this.status === 'running') {
+      this.runNext()
     }
   }
 
   addAndStart(...tasks: Task[]) {
-    this.add(...tasks);
-    this.start();
+    this.add(...tasks)
+    this.start()
   }
 
   start() {
-    if (this.status === "running") return;
-    this.status = "running";
-    this.emit("start");
-    this.runNext();
+    if (this.status === 'running') return
+    this.status = 'running'
+    this.emit('start')
+    this.runNext()
   }
 
   private runNext() {
     while (
-      this.status === "running" &&
+      this.status === 'running' &&
       this.currentCount < this.concurrency &&
       this.tasks.length > 0
     ) {
-      const task = this.tasks.shift()!;
-      this.currentCount++;
+      const task = this.tasks.shift()!
+      this.currentCount++
       Promise.resolve(task.run())
         .catch((error) => {
-          this.emit("error", error, task);
+          this.emit('error', error, task)
         })
         .finally(() => {
-          this.currentCount--;
-          this.runNext();
-        });
+          this.currentCount--
+          this.runNext()
+        })
     }
 
     if (this.tasks.length === 0 && this.currentCount === 0) {
-      this.status = "paused";
-      this.emit("drain");
+      this.status = 'paused'
+      this.emit('drain')
     }
   }
 
   pause() {
-    this.status = "paused";
-    this.emit("pause");
+    this.status = 'paused'
+    this.emit('pause')
   }
 
   clear() {
-    this.tasks = [];
+    this.tasks = []
   }
 
   get size() {
-    return this.tasks.length;
+    return this.tasks.length
   }
 
   get isRunning() {
-    return this.status === "running";
+    return this.status === 'running'
   }
 }

@@ -1,140 +1,107 @@
-import type { Chunk } from './type';
-import { ChunkSplitor } from "./ChunkSplitor";
-import { MultiThreadSplitor } from "./MutilThreadSplitor";
-import { Task, TaskQueue } from "@wf-upload/utils";
-import { EventEmitter } from "@wf-upload/utils";
+import type { Chunk, RequestStrategy } from './type'
+import { ChunkSplitor } from './ChunkSplitor'
+import { DefaultRequestStrategy } from './DefaultRequestStrategy'
+import { MultiThreadSplitor } from './MutilThreadSplitor'
+import { Task, TaskQueue } from '@wf-upload/utils'
+import { EventEmitter } from '@wf-upload/utils'
 
-export interface RequestStrategy {
-  // 文件创建请求，返回token
-  createFile(file: File): Promise<string>;
-  // 分片上传请求
-  uploadChunk(chunk: Chunk): Promise<void>;
-  // 文件合并请求，返回文件url
-  mergeFile(token: string): Promise<string>;
-  // hash校验请求
-  patchHash<T extends "file" | "chunk">(
-    token: string,
-    hash: string,
-    type: T
-  ): Promise<
-    T extends "file"
-      ? { hasFile: boolean }
-      : { hasFile: boolean; rest: number[]; url: string }
-  >;
-}
-
-export class DefaultRequestStrategy implements RequestStrategy {
-  // 文件创建请求，返回token
-  async createFile(file: File): Promise<string> {
-    // 发送文件创建请求
-    // 这里应该实现实际的文件创建逻辑
-    console.log("Creating file:", file.name);
-    return "upload-token-" + Math.random().toString(36).slice(2, 9);
-  }
-
-  // 分片上传请求
-  async uploadChunk(chunk: Chunk): Promise<void> {
-    // 发送分片上传请求
-    // 这里应该实现实际的分片上传逻辑
-    console.log("Uploading chunk:", chunk.index);
-  }
-
-  // 文件合并请求，返回文件url
-  async mergeFile(token: string): Promise<string> {
-    // 发送文件合并请求
-    // 这里应该实现实际的文件合并逻辑
-    console.log("Merging file with token:", token);
-    return "https://example.com/merged-file-" + token;
-  }
-
-  // hash校验请求
-  async patchHash<T extends "file" | "chunk">(
-    token: string,
-    hash: string,
-    type: T
-  ): Promise<
-    T extends "file"
-      ? { hasFile: boolean; rest: number[]; url: string }
-      : { hasFile: boolean; rest: number[]; url: string }
-  > {
-    // 发送hash校验请求
-    // 这里应该实现实际的hash校验逻辑
-    console.log("Checking hash:", hash, "for", type, token);
-    if (type === "file") {
-      return { hasFile: false } as any;
-    } else {
-      return { hasFile: false, rest: [], url: "" } as any;
-    }
-  }
-}
-
-export class UploadController extends EventEmitter<"end"> {
-  private requestStrategy: RequestStrategy;
-  private splitStrategy: ChunkSplitor;
-  private taskQueue: TaskQueue;
-  private file: File;
-  private token: string;
+export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
+  private requestStrategy: RequestStrategy // 请求策略
+  private splitStrategy: ChunkSplitor // 分片策略
+  private taskQueue: TaskQueue // 任务队列
+  private file: File // 上传的文件
+  private token: string // 上传的 token
+  private chunkSize: number // 上传的分片大小
+  private uploadedSize: number // 已经上传的分片
+  private isHasFile: Boolean // 服务器是否已经存在整个文件
 
   constructor(
     file: File,
     requestStrategy?: RequestStrategy,
-    splitStrategy?: ChunkSplitor
+    splitStrategy?: ChunkSplitor,
+    chunkSize?: number
   ) {
-    super();
-    this.file = file;
-    this.requestStrategy = requestStrategy || new DefaultRequestStrategy();
+    super()
+    this.file = file
+    this.chunkSize = chunkSize || 1024 * 1024 * 5
+    this.isHasFile = false
+    this.requestStrategy = requestStrategy || new DefaultRequestStrategy()
     this.splitStrategy =
-      splitStrategy || new MultiThreadSplitor(this.file, 1024 * 1024 * 5);
-    this.taskQueue = new TaskQueue();
-    this.token = "";
+      splitStrategy || new MultiThreadSplitor(this.file, this.chunkSize)
+    this.taskQueue = new TaskQueue()
+    this.token = ''
+    this.uploadedSize = 0
   }
 
   async init() {
-    this.token = await this.requestStrategy.createFile(this.file);
-    console.log("token", this.token);
-    this.splitStrategy.on("chunks", this.handleChunks.bind(this));
-    this.splitStrategy.on("wholeHash", this.handleWholeHash.bind(this));
+    this.token = await this.requestStrategy.createFile()
+    if (!this.token) {
+      throw new Error('文件上传的 token 获取失败！')
+    }
+    this.splitStrategy.on('chunks', this.handleChunks.bind(this))
+    this.splitStrategy.on('wholeHash', this.handleWholeHash.bind(this))
   }
 
   private handleChunks(chunks: Chunk[]) {
-    console.log("chunks", chunks);
     chunks.forEach((chunk) => {
-      this.taskQueue.addAndStart(new Task(this.uploadChunk.bind(this), chunk));
-    });
+      this.taskQueue.addAndStart(new Task(this.uploadChunk.bind(this), chunk))
+    })
   }
 
   private async uploadChunk(chunk: Chunk) {
-    // return new Promise((resolve) => {
-    //   setTimeout(() => {
-    //     console.log(chunk.hash);
-    //     resolve(1);
-    //   }, 2000);
-    // });
+    // console.log('校验分片 hash', new Date().getTime())
     const resp = await this.requestStrategy.patchHash(
       this.token,
       chunk.hash,
-      "chunk"
-    );
+      'chunk'
+    )
     if (resp.hasFile) {
-      return;
+      this.onProgerss(chunk)
+      return
     }
-    await this.requestStrategy.uploadChunk(chunk);
+    // console.log('上传分片', new Date().getTime())
+    const res = await this.requestStrategy.uploadChunk(chunk)
+    if (res.status === 'ok') {
+      this.onProgerss(chunk)
+    } else {
+      console.warn(`分片${chunk.start}到${chunk.end}上传失败！`)
+    }
+  }
+
+  private onProgerss(chunk: Chunk) {
+    if (this.isHasFile) return
+    if (this.uploadedSize < this.file.size) {
+      this.uploadedSize = this.uploadedSize + (chunk.end - chunk.start)
+    } else {
+      this.isHasFile = true
+    }
+    this.emit('progress', this.uploadedSize, this.file.size)
+    if (this.uploadedSize === this.file.size) {
+      console.log('分片已经上传完成，开始合并文件')
+    }
   }
 
   private async handleWholeHash(hash: string) {
-    console.log("wholeHash", hash);
-    const resp = await this.requestStrategy.patchHash<"file">(
+    const resp = await this.requestStrategy.patchHash<'file'>(
       this.token,
       hash,
-      "file"
-    );
+      'file'
+    )
     if (resp.hasFile) {
-      this.emit("end", resp);
+      // 整个文件之前已经上传，清空并发任务队列
+      this.taskQueue.clear()
+      console.log('wholeHash', hash)
+      this.uploadedSize = this.file.size
+      this.emit('end', resp)
     }
   }
 
   async start() {
-    await this.init();
-    this.splitStrategy.split();
+    try {
+      await this.init()
+      this.splitStrategy.split()
+    } catch (e: any) {
+      this.emit('error', e)
+    }
   }
 }

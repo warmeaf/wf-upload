@@ -9,8 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.4.35",
-    "@wf-upload/core": "workspace:*"
+    "@wf-upload/core": "workspace:*",
+    "axios": "^1.7.3",
+    "vue": "^3.4.35"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.1.2",

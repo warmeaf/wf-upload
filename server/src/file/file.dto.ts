@@ -3,8 +3,8 @@ export interface BaseHeader {
   'upload-file-token': string;
 }
 export interface PatchHashHeader extends BaseHeader {
-  'upload-file-hash': string;
-  'upload-file-type': HashType;
+  'Upload-File-Hash': string;
+  'Upload-File-Type': HashType;
 }
 
 export interface Chunk {
