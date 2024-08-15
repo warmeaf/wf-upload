@@ -18,11 +18,17 @@ export class DefaultRequestStrategy implements RequestStrategy {
   }
 
   // 文件合并请求，返回文件url
-  async mergeFile(token: string): Promise<string> {
+  async mergeFile(token: string): Promise<{
+    status: string
+    url: string
+  }> {
     // 发送文件合并请求
     // 这里应该实现实际的文件合并逻辑
     console.log('Merging file with token:', token)
-    return 'https://example.com/merged-file-' + token
+    return {
+      status: 'ok',
+      url: '',
+    }
   }
 
   // hash校验请求

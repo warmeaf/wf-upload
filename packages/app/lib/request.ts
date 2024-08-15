@@ -68,7 +68,7 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
     }
   }
 
-  private onProgerss(chunk: Chunk) {
+  private async onProgerss(chunk: Chunk) {
     if (this.isHasFile) return
     if (this.uploadedSize < this.file.size) {
       this.uploadedSize = this.uploadedSize + (chunk.end - chunk.start)
@@ -76,11 +76,12 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
       this.isHasFile = true
     }
     this.emit('progress', this.uploadedSize, this.file.size)
+
     if (this.uploadedSize === this.file.size) {
       console.log('分片已经上传完成，开始合并文件')
       // 调用接口合并文件
-      // 返回值包括文件合并的结果和文件访问路径
-      this.emit('end')
+      const res = await this.requestStrategy.mergeFile(this.token)
+      this.emit('end', res)
     }
   }
 

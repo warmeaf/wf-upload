@@ -23,14 +23,20 @@ export class AxiosRequestStrategy implements RequestStrategy {
     data.set('index', chunk.index.toString())
 
     const response = await axios.post(`${this.baseURL}/uploadChunk`, data, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'content-type': 'multipart/form-data' },
     })
     return response.data
   }
 
-  async mergeFile(token: string): Promise<string> {
-    const response = await axios.post(`${this.baseURL}/merge`, { token })
-    return response.data.url
+  async mergeFile(token: string): Promise<{
+    status: string
+    url: string
+  }> {
+    const data = {
+      token,
+    }
+    const response = await axios.post(`${this.baseURL}/merge`, data)
+    return response.data
   }
 
   async patchHash<T extends 'file' | 'chunk'>(
