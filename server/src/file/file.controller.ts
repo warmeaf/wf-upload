@@ -4,7 +4,6 @@ import {
   Post,
   Res,
   Inject,
-  Headers,
   Body,
   UseInterceptors,
   UploadedFile,
@@ -12,13 +11,13 @@ import {
 import { Express, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UniqueCodeService } from '../unique-code/unique-code.service';
-import type { Chunk, BaseHeader } from './file.dto';
+import type { Chunk } from './file.dto';
 import { FileService } from './file.service';
 
 @Controller('file')
 export class FileController {
   constructor(private readonly fileService: FileService) {}
-  
+
   @Inject(UniqueCodeService)
   private uniqueCodeService: UniqueCodeService;
 
@@ -32,22 +31,22 @@ export class FileController {
 
   // hash 校验
   @Post('patchHash')
-  patchHash(@Res() response: Response, @Body() body): void {
+  async patchHash(@Res() response: Response, @Body() body): Promise<any> {
     const { token, hash, type } = body;
-    const vaid = this.uniqueCodeService.verifyUniqueCode(token);
-    if (vaid) {
-      if (type === 'chunk') {
-        response.status(200).send({
-          hasFile: false,
-        });
-      } else {
-        response.status(200).send({
-          hasFile: false,
-          rest: [[200, 300]],
-        });
-      }
+    const valid = this.uniqueCodeService.verifyUniqueCode(token);
+    if (!valid) {
+      return response.status(403).send();
+    }
+
+    if (type === 'chunk') {
+      const exists = await this.fileService.patchHashChunk(hash);
+      console.log('exists', exists);
+      return response.status(200).json({ hasFile: exists });
     } else {
-      response.status(403).send();
+      return response.status(200).json({
+        hasFile: false,
+        rest: [[200, 300]],
+      });
     }
   }
 
@@ -59,9 +58,6 @@ export class FileController {
     @Body() chunk: Chunk,
     @UploadedFile() blob: Express.Multer.File,
   ): Promise<any> {
-    // console.log('uploadChunk', chunk);
-    // console.log('uploadChunk', blob);
-    // TODO 存储分片数据
     await this.fileService.saveChunk(blob.buffer, chunk.hash);
     response.status(200).send({
       status: 'ok',

@@ -14,4 +14,9 @@ export class FileService {
     const fileChunk = new this.fileChunkModel({ chunk, hash });
     return fileChunk.save();
   }
+
+  async patchHashChunk(hash: string): Promise<boolean> {
+    const exists = await this.fileChunkModel.exists({ hash });
+    return Boolean(exists);
+  }
 }
