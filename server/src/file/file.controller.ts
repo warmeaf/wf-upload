@@ -66,14 +66,16 @@ export class FileController {
   }
 
   // 合并文件
-  @Head('mergeFile')
-  mergeFile(@Res() response: Response, @Headers() headers: BaseHeader): void {
-    const token = headers['upload-file-token'];
+  @Post('merge')
+  mergeFile(@Body() body: { token: string }): {
+    status: string;
+    url: string;
+  } {
+    const { token } = body;
     const vaid = this.uniqueCodeService.verifyUniqueCode(token);
-    if (vaid) {
-      response.status(200).send();
-    } else {
-      response.status(403).send();
-    }
+    return {
+      status: 'ok',
+      url: 'fsadgasg',
+    };
   }
 }
