@@ -1,3 +1,5 @@
+import { Schema, model, Document } from 'mongoose';
+
 export type HashType = 'file' | 'chunk';
 export interface BaseHeader {
   'upload-file-token': string;
@@ -14,3 +16,15 @@ export interface Chunk {
   hash: string; // 分片的hash值
   index: number; // 分片在文件中的索引
 }
+
+export interface FileChunkDocument extends Document {
+  chunk: Buffer;
+  hash: string;
+}
+
+export const FileChunkSchema = new Schema<FileChunkDocument>({
+  chunk: { type: Buffer, required: true },
+  hash: { type: String, required: true },
+});
+
+export const FileChunk = model<FileChunkDocument>('FileChunk', FileChunkSchema);

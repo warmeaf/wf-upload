@@ -13,11 +13,12 @@ import { Express, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UniqueCodeService } from '../unique-code/unique-code.service';
 import type { Chunk, BaseHeader } from './file.dto';
+import { FileService } from './file.service';
 
 @Controller('file')
 export class FileController {
-  constructor() {}
-
+  constructor(private readonly fileService: FileService) {}
+  
   @Inject(UniqueCodeService)
   private uniqueCodeService: UniqueCodeService;
 
@@ -53,13 +54,15 @@ export class FileController {
   // 上传分片
   @Post('uploadChunk')
   @UseInterceptors(FileInterceptor('blob'))
-  uploadChunk(
+  async uploadChunk(
     @Res() response: Response,
     @Body() chunk: Chunk,
     @UploadedFile() blob: Express.Multer.File,
-  ): void {
+  ): Promise<any> {
     // console.log('uploadChunk', chunk);
     // console.log('uploadChunk', blob);
+    // TODO 存储分片数据
+    await this.fileService.saveChunk(blob.buffer, chunk.hash);
     response.status(200).send({
       status: 'ok',
     });
