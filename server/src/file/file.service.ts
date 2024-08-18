@@ -23,6 +23,16 @@ export class FileService {
     return Boolean(exists);
   }
 
+  async checkFileHah(token: string, hash: string) {
+    const file = await this.fileModel.findOne({ hash }).exec();
+    if (file) {
+      await this.fileModel.deleteOne({ token }).exec();
+      return true;
+    } else {
+      return false;
+    }
+  }
+
   async setFileHash(token: string, hash: string) {
     const file = await this.fileModel.findOne({ token }).exec();
 

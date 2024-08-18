@@ -48,8 +48,9 @@ export class FileController {
     } else if (type === 'file') {
       // TODO 检查是否存在整个文件的 hash
       // 如果不存在就把整个文件的 hash 存储起来
+      const exists = await this.fileService.checkFileHah(token, hash);
       return response.status(200).json({
-        hasFile: false,
+        hasFile: exists,
         rest: [[200, 300]],
       });
     }
@@ -77,7 +78,10 @@ export class FileController {
     url: string;
   }> {
     const { token, hash } = body;
-    await this.fileService.setFileHash(token, hash);
+    const isHasFile = await this.fileService.checkFileHah(token, hash);
+    if (!isHasFile) {
+      await this.fileService.setFileHash(token, hash);
+    }
 
     return {
       status: 'ok',
