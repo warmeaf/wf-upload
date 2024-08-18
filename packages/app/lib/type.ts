@@ -29,7 +29,10 @@ export interface RequestStrategy {
   // 分片上传请求
   uploadChunk(chunk: UploadChunk): Promise<{ status: string }>
   // 文件合并请求，返回文件url
-  mergeFile(token: string): Promise<{
+  mergeFile(
+    token: string,
+    hash: string
+  ): Promise<{
     status: string
     url: string
   }>

@@ -10,6 +10,7 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
   private splitStrategy: ChunkSplitor // 分片策略
   private taskQueue: TaskQueue // 任务队列
   private file: File // 上传的文件
+  private fileHah: string // 上传的文件 hash
   private token: string // 上传的 token
   private chunkSize: number // 上传的分片大小
   private uploadedSize: number // 已经上传的分片
@@ -23,6 +24,7 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
   ) {
     super()
     this.file = file
+    this.fileHah = ''
     this.chunkSize = chunkSize || 1024 * 1024 * 5
     this.isHasFile = false
     this.requestStrategy = requestStrategy || new DefaultRequestStrategy()
@@ -92,12 +94,14 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
     if (this.uploadedSize === this.file.size) {
       console.log('分片已经上传完成，开始合并文件')
       // 调用接口合并文件
-      const res = await this.requestStrategy.mergeFile(this.token)
+      if (!this.fileHah) return
+      const res = await this.requestStrategy.mergeFile(this.token, this.fileHah)
       this.emit('end', res)
     }
   }
 
   private async handleWholeHash(hash: string) {
+    this.fileHah = hash
     const resp = await this.requestStrategy.patchHash<'file'>(
       this.token,
       hash,

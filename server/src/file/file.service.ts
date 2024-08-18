@@ -23,6 +23,18 @@ export class FileService {
     return Boolean(exists);
   }
 
+  async setFileHash(token: string, hash: string) {
+    const file = await this.fileModel.findOne({ token }).exec();
+
+    if (!file) {
+      return null; // 或者抛出错误，根据实际情况决定
+    }
+
+    file.hash = hash;
+
+    return file.save();
+  }
+
   async createFile(
     token: string,
     name: string,

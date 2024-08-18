@@ -63,7 +63,6 @@ export class FileController {
     @Body() chunk: UploadChunk,
     @UploadedFile() blob: Express.Multer.File,
   ): Promise<any> {
-    console.log(chunk);
     await this.fileService.saveChunk(blob.buffer, chunk.hash);
     await this.fileService.updateChunk(chunk.token, chunk.hash, chunk.index);
     return response.status(200).json({
@@ -73,12 +72,13 @@ export class FileController {
 
   // 合并文件
   @Post('merge')
-  mergeFile(@Body() body: { token: string }): {
+  async mergeFile(@Body() body: { token: string; hash: string }): Promise<{
     status: string;
     url: string;
-  } {
-    const { token } = body;
-    const vaid = this.uniqueCodeService.verifyUniqueCode(token);
+  }> {
+    const { token, hash } = body;
+    await this.fileService.setFileHash(token, hash);
+
     return {
       status: 'ok',
       url: 'fsadgasg',

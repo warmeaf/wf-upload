@@ -24,13 +24,16 @@ export class DefaultRequestStrategy implements RequestStrategy {
   }
 
   // 文件合并请求，返回文件url
-  async mergeFile(token: string): Promise<{
+  async mergeFile(
+    token: string,
+    hash: string
+  ): Promise<{
     status: string
     url: string
   }> {
     // 发送文件合并请求
     // 这里应该实现实际的文件合并逻辑
-    console.log('Merging file with token:', token)
+    console.log('Merging file with token:', token, hash)
     return {
       status: 'ok',
       url: '',

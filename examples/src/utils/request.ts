@@ -34,12 +34,16 @@ export class AxiosRequestStrategy implements RequestStrategy {
     return response.data
   }
 
-  async mergeFile(token: string): Promise<{
+  async mergeFile(
+    token: string,
+    hash: string
+  ): Promise<{
     status: string
     url: string
   }> {
     const data = {
       token,
+      hash,
     }
     const response = await axios.post(`${this.baseURL}/merge`, data)
     return response.data
