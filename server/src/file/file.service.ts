@@ -3,7 +3,6 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { FileDocument } from './schema/file.dto';
 import { FileChunkDocument } from './schema/fileChunk.dto';
-import { UploadDocument } from './schema/upload.schema';
 
 @Injectable()
 export class FileService {
@@ -12,8 +11,6 @@ export class FileService {
     private fileChunkModel: Model<FileChunkDocument>,
     @InjectModel(FileDocument.name)
     private fileModel: Model<FileDocument>,
-    @InjectModel(UploadDocument.name)
-    private uploadModel: Model<UploadDocument>,
   ) {}
 
   async saveChunk(chunk: Buffer, hash: string): Promise<FileChunkDocument> {
