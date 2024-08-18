@@ -6,17 +6,28 @@ export interface Chunk {
   index: number // 分片在文件中的索引
 }
 
+export interface UploadChunk extends Chunk {
+  token: string
+}
+
 // 分片的相关事件
 // chunks: 一部分分片产生了
 // wholeHash: 整个文件的hash计算完成
 // drain: 所有分片处理完成
 export type ChunkSplitorEvents = 'chunks' | 'wholeHash' | 'drain'
 
+export interface CreateFile {
+  name: string
+  type: string
+  size: number
+  chunksLength: number
+}
+
 export interface RequestStrategy {
   // 文件创建请求，返回token
-  createFile(): Promise<string>
+  createFile(file: CreateFile): Promise<{ status: string; token: string }>
   // 分片上传请求
-  uploadChunk(chunk: Chunk): Promise<{ status: string }>
+  uploadChunk(chunk: UploadChunk): Promise<{ status: string }>
   // 文件合并请求，返回文件url
   mergeFile(token: string): Promise<{
     status: string

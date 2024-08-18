@@ -34,7 +34,16 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
   }
 
   async init() {
-    this.token = await this.requestStrategy.createFile()
+    // console.log(this.file)
+    const res = await this.requestStrategy.createFile({
+      name: this.file.name,
+      type: this.file.type,
+      size: this.file.size,
+      chunksLength: this.splitStrategy.chunksLength,
+    })
+    if (res.status === 'ok') {
+      this.token = res.token
+    }
     if (!this.token) {
       throw new Error('文件上传的 token 获取失败！')
     }
@@ -60,7 +69,10 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
       return
     }
     // console.log('上传分片', new Date().getTime())
-    const res = await this.requestStrategy.uploadChunk(chunk)
+    const res = await this.requestStrategy.uploadChunk({
+      ...chunk,
+      token: this.token,
+    })
     if (res.status === 'ok') {
       this.onProgerss(chunk)
     } else {

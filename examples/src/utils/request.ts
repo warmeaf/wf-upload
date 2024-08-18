@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { RequestStrategy, Chunk } from '@wf-upload/core'
+import type { RequestStrategy, CreateFile, UploadChunk } from '@wf-upload/core'
 
 export class AxiosRequestStrategy implements RequestStrategy {
   private baseURL: string
@@ -8,14 +8,20 @@ export class AxiosRequestStrategy implements RequestStrategy {
     this.baseURL = baseURL
   }
 
-  async createFile(): Promise<string> {
-    const response = await axios.head(`${this.baseURL}/create`)
+  async createFile(
+    file: CreateFile
+  ): Promise<{ status: string; token: string }> {
+    const response = await axios.post(`${this.baseURL}/create`, file)
     const token = response.headers['upload-file-token']
-    return token
+    return {
+      ...response.data,
+      token,
+    }
   }
 
-  async uploadChunk(chunk: Chunk): Promise<{ status: string }> {
+  async uploadChunk(chunk: UploadChunk): Promise<{ status: string }> {
     const data = new FormData()
+    data.set('token', chunk.token)
     data.set('blob', chunk.blob)
     data.set('hash', chunk.hash)
     data.set('start', chunk.start.toString())

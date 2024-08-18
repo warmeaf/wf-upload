@@ -1,6 +1,5 @@
 import {
   Controller,
-  Head,
   Post,
   Res,
   Inject,
@@ -11,7 +10,7 @@ import {
 import { Express, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UniqueCodeService } from '../unique-code/unique-code.service';
-import type { Chunk } from './file.dto';
+import type { UploadChunk } from './type';
 import { FileService } from './file.service';
 
 @Controller('file')
@@ -22,11 +21,16 @@ export class FileController {
   private uniqueCodeService: UniqueCodeService;
 
   // 创建文件
-  @Head('create')
-  create(@Res() response: Response): void {
+  @Post('create')
+  async create(@Res() response: Response, @Body() body): Promise<any> {
     const token = this.uniqueCodeService.generateUniqueCode();
+    const { name, size, type, chunksLength } = body;
+
+    await this.fileService.createFile(token, name, size, type, chunksLength);
     response.setHeader('upload-file-token', token);
-    response.status(200).send();
+    return response.status(200).json({
+      status: 'ok',
+    });
   }
 
   // hash 校验
@@ -40,9 +44,10 @@ export class FileController {
 
     if (type === 'chunk') {
       const exists = await this.fileService.patchHashChunk(hash);
-      console.log('exists', exists);
       return response.status(200).json({ hasFile: exists });
-    } else {
+    } else if (type === 'file') {
+      // TODO 检查是否存在整个文件的 hash
+      // 如果不存在就把整个文件的 hash 存储起来
       return response.status(200).json({
         hasFile: false,
         rest: [[200, 300]],
@@ -55,11 +60,13 @@ export class FileController {
   @UseInterceptors(FileInterceptor('blob'))
   async uploadChunk(
     @Res() response: Response,
-    @Body() chunk: Chunk,
+    @Body() chunk: UploadChunk,
     @UploadedFile() blob: Express.Multer.File,
   ): Promise<any> {
+    console.log(chunk);
     await this.fileService.saveChunk(blob.buffer, chunk.hash);
-    response.status(200).send({
+    await this.fileService.updateChunk(chunk.token, chunk.hash, chunk.index);
+    return response.status(200).json({
       status: 'ok',
     });
   }

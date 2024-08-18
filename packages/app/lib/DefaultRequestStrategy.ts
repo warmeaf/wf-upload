@@ -1,16 +1,22 @@
-import type { Chunk, RequestStrategy } from './type'
+import type { RequestStrategy, CreateFile, UploadChunk } from './type'
 
 // 利用 fetch 实现请求
 export class DefaultRequestStrategy implements RequestStrategy {
   // 文件创建请求，返回token
-  async createFile(): Promise<string> {
+  async createFile(
+    file: CreateFile
+  ): Promise<{ status: string; token: string }> {
     // 发送文件创建请求
     // 这里应该实现实际的文件创建逻辑
-    return 'upload-token-' + Math.random().toString(36).slice(2, 9)
+    console.log(file)
+    return {
+      status: '',
+      token: '',
+    }
   }
 
   // 分片上传请求
-  async uploadChunk(chunk: Chunk): Promise<{ status: string }> {
+  async uploadChunk(chunk: UploadChunk): Promise<{ status: string }> {
     // 发送分片上传请求
     // 这里应该实现实际的分片上传逻辑
     console.log('Uploading chunk:', chunk.index)

@@ -62,6 +62,10 @@ export abstract class ChunkSplitor extends EventEmitter<ChunkSplitorEvents> {
     this.calcHash(this.chunks, emitter)
   }
 
+  get chunksLength() {
+    return this.chunks.length
+  }
+
   // 计算每一个分片的hash
   abstract calcHash(chunks: Chunk[], emitter: EventEmitter<'chunks'>): void
 
