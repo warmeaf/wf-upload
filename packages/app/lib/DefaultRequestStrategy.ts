@@ -46,8 +46,8 @@ export class DefaultRequestStrategy implements RequestStrategy {
     hash: string,
     type: T
   ): Promise<
-    T extends 'file'
-      ? { hasFile: boolean; rest: number[]; url: string }
+    T extends 'chunk'
+      ? { status: string; hasFile: boolean }
       : { hasFile: boolean; rest: number[]; url: string }
   > {
     // 发送hash校验请求

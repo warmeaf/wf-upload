@@ -60,11 +60,14 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
 
   private async uploadChunk(chunk: Chunk) {
     // console.log('校验分片 hash', new Date().getTime())
-    const resp = await this.requestStrategy.patchHash(
+    const resp = await this.requestStrategy.patchHash<'chunk'>(
       this.token,
       chunk.hash,
       'chunk'
     )
+    if (resp.status !== 'ok') {
+      return
+    }
     if (resp.hasFile) {
       this.onProgerss(chunk)
       return
@@ -75,9 +78,23 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
       token: this.token,
     })
     if (res.status === 'ok') {
-      this.onProgerss(chunk)
+      this.onProgressNormal(chunk)
     } else {
       console.warn(`分片${chunk.start}到${chunk.end}上传失败！`)
+    }
+  }
+
+  private async onProgressNormal(chunk: Chunk) {
+    this.uploadedSize = this.uploadedSize + (chunk.end - chunk.start)
+    if (this.uploadedSize === this.file.size) {
+      console.log('分片已经上传完成，开始合并文件')
+      // 调用接口合并文件
+      if (!this.fileHah) return
+      const res = await this.requestStrategy.mergeFile(this.token, this.fileHah)
+      this.emit('end', res)
+      this.emit('progress', this.uploadedSize, this.file.size)
+    } else {
+      this.emit('progress', this.uploadedSize, this.file.size)
     }
   }
 

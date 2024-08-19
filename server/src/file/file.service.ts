@@ -18,7 +18,7 @@ export class FileService {
     return fileChunk.save();
   }
 
-  async patchHashChunk(hash: string): Promise<boolean> {
+  async checkChunkHash(hash: string): Promise<boolean> {
     const exists = await this.fileChunkModel.exists({ hash });
     return Boolean(exists);
   }
@@ -45,6 +45,15 @@ export class FileService {
     return file.save();
   }
 
+  async checkFileChunksLength(hash: string): Promise<Boolean | null> {
+    const file = await this.fileModel.findOne({ fileHash: hash }).exec();
+    if (!file) {
+      return null; // 或者抛出错误，根据实际情况决定
+    }
+
+    return file.chunksLength === file.chunks.length;
+  }
+
   async createFile(
     token: string,
     name: string,
@@ -68,7 +77,11 @@ export class FileService {
     return fileChunk.save();
   }
 
-  async updateChunk(token: string, hash: string, index: number) {
+  async pushFileChunks(
+    token: string,
+    hash: string,
+    index: number,
+  ): Promise<FileDocument | null> {
     const file = await this.fileModel.findOne({ token }).exec();
 
     if (!file) {

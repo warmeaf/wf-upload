@@ -20,6 +20,12 @@ interface FileBody {
   chunksLength: number;
 }
 
+interface PatchHashBody {
+  token: string;
+  hash: string;
+  type: 'chunk' | 'file';
+}
+
 @Controller('file')
 export class FileController {
   constructor(private readonly fileService: FileService) {}
@@ -51,24 +57,27 @@ export class FileController {
 
   // hash 校验
   @Post('patchHash')
-  async patchHash(@Res() response: Response, @Body() body): Promise<any> {
+  async patchHash(@Body() body: PatchHashBody): Promise<any> {
     const { token, hash, type } = body;
     const valid = this.uniqueCodeService.verifyUniqueCode(token);
     if (!valid) {
-      return response.status(403).send();
+      return {
+        status: 'error',
+      };
     }
 
     if (type === 'chunk') {
-      const exists = await this.fileService.patchHashChunk(hash);
-      return response.status(200).json({ hasFile: exists });
+      const exists = await this.fileService.checkChunkHash(hash);
+      return { status: 'ok', hasFile: exists };
     } else if (type === 'file') {
       // TODO 检查是否存在整个文件的 hash
       // 如果不存在就把整个文件的 hash 存储起来
       const exists = await this.fileService.checkFileHah(token, hash);
-      return response.status(200).json({
+      return {
+        status: 'ok',
         hasFile: exists,
         rest: [[200, 300]],
-      });
+      };
     }
   }
 
@@ -81,7 +90,7 @@ export class FileController {
     @UploadedFile() blob: Express.Multer.File,
   ): Promise<any> {
     await this.fileService.saveChunk(blob.buffer, chunk.hash);
-    await this.fileService.updateChunk(chunk.token, chunk.hash, chunk.index);
+    await this.fileService.pushFileChunks(chunk.token, chunk.hash, chunk.index);
     return response.status(200).json({
       status: 'ok',
     });
@@ -97,11 +106,18 @@ export class FileController {
     const isHasFile = await this.fileService.checkFileHah(token, hash);
     if (!isHasFile) {
       await this.fileService.setFileHash(token, hash);
+      const valid = await this.fileService.checkFileChunksLength(hash);
+      if (valid) {
+        return {
+          status: 'ok',
+          url: '',
+        };
+      }
     }
 
     return {
-      status: 'ok',
-      url: 'fsadgasg',
+      status: 'error',
+      url: '',
     };
   }
 }
