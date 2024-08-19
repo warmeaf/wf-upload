@@ -70,12 +70,13 @@ export class FileController {
       const exists = await this.fileService.checkChunkHash(hash);
       return { status: 'ok', hasFile: exists };
     } else if (type === 'file') {
-      // TODO 检查是否存在整个文件的 hash
-      // 如果不存在就把整个文件的 hash 存储起来
-      const exists = await this.fileService.checkFileHah(token, hash);
+      const isHasFile = await this.fileService.checkFileHah(hash);
+      if (isHasFile) {
+        await this.fileService.deleteFile(token);
+      }
       return {
         status: 'ok',
-        hasFile: exists,
+        hasFile: isHasFile,
         rest: [[200, 300]],
       };
     }
@@ -103,21 +104,19 @@ export class FileController {
     url: string;
   }> {
     const { token, hash } = body;
-    const isHasFile = await this.fileService.checkFileHah(token, hash);
-    if (!isHasFile) {
-      await this.fileService.setFileHash(token, hash);
-      const valid = await this.fileService.checkFileChunksLength(hash);
-      if (valid) {
-        return {
-          status: 'ok',
-          url: '',
-        };
-      }
-    }
 
-    return {
-      status: 'error',
-      url: '',
-    };
+    await this.fileService.setFileHash(token, hash);
+    const valid = await this.fileService.checkFileChunksLength(hash);
+    if (valid) {
+      return {
+        status: 'ok',
+        url: '',
+      };
+    } else {
+      return {
+        status: 'error',
+        url: '',
+      };
+    }
   }
 }

@@ -69,7 +69,7 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
       return
     }
     if (resp.hasFile) {
-      this.onProgerss(chunk)
+      this.onProgerssHasChunk(chunk)
       return
     }
     // console.log('上传分片', new Date().getTime())
@@ -98,21 +98,13 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
     }
   }
 
-  private async onProgerss(chunk: Chunk) {
+  private async onProgerssHasChunk(chunk: Chunk) {
     if (this.isHasFile) return
     if (this.uploadedSize < this.file.size) {
       this.uploadedSize = this.uploadedSize + (chunk.end - chunk.start)
+      this.emit('progress', this.uploadedSize, this.file.size)
     } else {
       this.isHasFile = true
-    }
-    this.emit('progress', this.uploadedSize, this.file.size)
-
-    if (this.uploadedSize === this.file.size) {
-      console.log('分片已经上传完成，开始合并文件')
-      // 调用接口合并文件
-      if (!this.fileHah) return
-      const res = await this.requestStrategy.mergeFile(this.token, this.fileHah)
-      this.emit('end', res)
     }
   }
 
@@ -126,9 +118,9 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
     if (resp.hasFile) {
       // 整个文件之前已经上传，清空并发任务队列
       this.taskQueue.clear()
-      console.log('wholeHash', hash)
       this.uploadedSize = this.file.size
-      this.emit('end', resp)
+      this.emit('end', {})
+      this.emit('progress', this.uploadedSize, this.file.size)
     }
   }
 
