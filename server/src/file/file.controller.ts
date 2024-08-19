@@ -13,6 +13,13 @@ import { UniqueCodeService } from '../unique-code/unique-code.service';
 import type { UploadChunk } from './type';
 import { FileService } from './file.service';
 
+interface FileBody {
+  name: string;
+  size: number;
+  type: string;
+  chunksLength: number;
+}
+
 @Controller('file')
 export class FileController {
   constructor(private readonly fileService: FileService) {}
@@ -22,15 +29,24 @@ export class FileController {
 
   // 创建文件
   @Post('create')
-  async create(@Res() response: Response, @Body() body): Promise<any> {
+  async create(@Body() body: FileBody): Promise<{
+    status: string;
+    token: string;
+  }> {
     const token = this.uniqueCodeService.generateUniqueCode();
+    if (!token) {
+      return {
+        status: 'error',
+        token: '',
+      };
+    }
     const { name, size, type, chunksLength } = body;
 
     await this.fileService.createFile(token, name, size, type, chunksLength);
-    response.setHeader('upload-file-token', token);
-    return response.status(200).json({
+    return {
       status: 'ok',
-    });
+      token,
+    };
   }
 
   // hash 校验

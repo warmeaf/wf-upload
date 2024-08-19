@@ -36,7 +36,6 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
   }
 
   async init() {
-    // console.log(this.file)
     const res = await this.requestStrategy.createFile({
       name: this.file.name,
       type: this.file.type,

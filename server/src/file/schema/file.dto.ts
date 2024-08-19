@@ -14,10 +14,10 @@ export class FileDocument extends Document {
    * 文件的 hash 值'
    */
   @Prop()
-  hash: string;
+  fileHash: string;
 
   @Prop()
-  size: string;
+  size: number;
 
   @Prop()
   type: string;

@@ -12,11 +12,7 @@ export class AxiosRequestStrategy implements RequestStrategy {
     file: CreateFile
   ): Promise<{ status: string; token: string }> {
     const response = await axios.post(`${this.baseURL}/create`, file)
-    const token = response.headers['upload-file-token']
-    return {
-      ...response.data,
-      token,
-    }
+    return response.data
   }
 
   async uploadChunk(chunk: UploadChunk): Promise<{ status: string }> {

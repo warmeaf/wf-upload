@@ -40,7 +40,7 @@ export class FileService {
       return null; // 或者抛出错误，根据实际情况决定
     }
 
-    file.hash = hash;
+    file.fileHash = hash;
 
     return file.save();
   }
@@ -48,20 +48,20 @@ export class FileService {
   async createFile(
     token: string,
     name: string,
-    size: string,
+    size: number,
     type: string,
     chunksLength: number,
-    hash: string = '',
+    fileHash: string = '',
     chunks: [] = [],
     url: string = '',
-  ) {
+  ): Promise<FileDocument> {
     const fileChunk = new this.fileModel({
       token,
       name,
       size,
       type,
       chunksLength,
-      hash,
+      fileHash,
       chunks,
       url,
     });
