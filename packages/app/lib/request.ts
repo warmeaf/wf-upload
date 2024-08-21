@@ -5,6 +5,7 @@ import { MultiThreadSplitor } from './MutilThreadSplitor'
 import { Task, TaskQueue } from '@wf-upload/utils'
 import { EventEmitter } from '@wf-upload/utils'
 
+let emitter: EventEmitter<'chunks'> | null = null
 export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
   private requestStrategy: RequestStrategy // 请求策略
   private splitStrategy: ChunkSplitor // 分片策略
@@ -91,8 +92,16 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
       // 调用接口合并文件
       if (!this.fileHah) return
       const res = await this.requestStrategy.mergeFile(this.token, this.fileHah)
-      this.emit('end', res)
-      this.emit('progress', this.uploadedSize, this.file.size)
+      if (res.status === 'ok') {
+        // 清空并发任务队列
+        this.taskQueue.clear()
+        // 销毁分片计算
+        this.splitStrategy.dispose()
+        // 清空分片数组
+        this.splitStrategy.clear()
+        this.emit('end', res)
+        this.emit('progress', this.uploadedSize, this.file.size)
+      }
     } else {
       this.emit('progress', this.uploadedSize, this.file.size)
     }
@@ -116,18 +125,36 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
       'file'
     )
     if (resp.hasFile) {
-      // 整个文件之前已经上传，清空并发任务队列
+      // 清空并发任务队列
       this.taskQueue.clear()
+      // 销毁分片计算
+      this.splitStrategy.dispose()
+      // 清空分片数组
+      this.splitStrategy.clear()
       this.uploadedSize = this.file.size
       this.emit('end', {})
       this.emit('progress', this.uploadedSize, this.file.size)
     }
   }
 
+  pause(): void {
+    // 暂停事件分发
+    this.splitStrategy.pause()
+    // 暂停任务队列
+    this.taskQueue.pause()
+  }
+
+  resume(): void {
+    // 重启事件分发
+    emitter && this.splitStrategy.resume(emitter)
+    // 重启任务队列
+    this.taskQueue.start()
+  }
+
   async start() {
     try {
       await this.init()
-      this.splitStrategy.split()
+      emitter = this.splitStrategy.split()
     } catch (e: any) {
       this.emit('error', e)
     }

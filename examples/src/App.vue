@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { WfUpload } from '@wf-upload/core'
 import { AxiosRequestStrategy } from './utils/request'
 
+let uc: WfUpload | null = null
 const file = ref<null | File>(null)
 const progress = ref<number>(0)
 
@@ -17,7 +18,7 @@ const handleFileChange = (e: Event) => {
 }
 
 const handleUpload = (file: File) => {
-  const uc = new WfUpload(file, new AxiosRequestStrategy('/file'))
+  uc = new WfUpload(file, new AxiosRequestStrategy('/file'))
   uc.on('error', (e: any) => {
     console.log(e.message)
   })
@@ -30,6 +31,14 @@ const handleUpload = (file: File) => {
   })
   uc.start()
 }
+
+const pause = () => {
+  uc && uc.pause()
+}
+
+const resume = () => {
+  uc && uc.resume()
+}
 </script>
 
 <template>
@@ -38,5 +47,9 @@ const handleUpload = (file: File) => {
   </div>
   <div>
     <progress max="100" :value="progress" />
+  </div>
+  <div>
+    <button @click="pause">暂停</button>
+    <button @click="resume">启动</button>
   </div>
 </template>

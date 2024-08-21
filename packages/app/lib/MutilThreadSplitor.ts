@@ -11,6 +11,8 @@ export class MultiThreadSplitor extends ChunkSplitor {
           type: 'module',
         })
     )
+  private isPaused: boolean = false
+  private pausedChunks: Chunk[][] = []
 
   calcHash(chunks: Chunk[], emitter: EventEmitter<'chunks'>): void {
     // console.log('开始计算分片 hash', new Date().getTime())
@@ -36,11 +38,27 @@ export class MultiThreadSplitor extends ChunkSplitor {
 
       // 设置回调函数处理 worker 的响应
       worker.onmessage = (e) => {
-        // console.log('分片 hash 计算完成', new Date().getTime())
-        // 通过事件发射器发出处理后的块数据
-        emitter.emit('chunks', e.data)
+        if (this.isPaused) {
+          // If paused, store the chunks without emitting events
+          this.pausedChunks.push(e.data)
+        } else {
+          // If not paused, emit the chunks event
+          emitter.emit('chunks', e.data)
+        }
       }
     }
+  }
+
+  pause(): void {
+    this.isPaused = true
+  }
+
+  resume(emitter: EventEmitter<'chunks'>): void {
+    this.isPaused = false
+    for (const chunks of this.pausedChunks) {
+      emitter.emit('chunks', chunks)
+    }
+    this.pausedChunks = []
   }
 
   dispose(): void {

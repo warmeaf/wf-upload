@@ -27,9 +27,9 @@ export abstract class ChunkSplitor extends EventEmitter<ChunkSplitorEvents> {
    * split 方法用于分割文件为若干块，并计算每个块的哈希值，最后汇总为整个文件的哈希值
    * 同时需要确保按照分片顺序计算整个文件的 hash 值，否则会出现同一个文件 hash 值不一样的情况
    */
-  split() {
+  split(): EventEmitter<'chunks'> | null {
     if (this.hasSplited) {
-      return
+      return null
     }
     this.hasSplited = true
     const emitter = new EventEmitter<'chunks'>()
@@ -60,6 +60,11 @@ export abstract class ChunkSplitor extends EventEmitter<ChunkSplitorEvents> {
 
     emitter.on('chunks', chunksHandler)
     this.calcHash(this.chunks, emitter)
+    return emitter
+  }
+
+  clear() {
+    this.chunks = []
   }
 
   get chunksLength() {
@@ -71,4 +76,8 @@ export abstract class ChunkSplitor extends EventEmitter<ChunkSplitorEvents> {
 
   // 分片完成后一些需要销毁的工作
   abstract dispose(): void
+
+  abstract pause(): void
+
+  abstract resume(emitter: EventEmitter<'chunks'>): void
 }
