@@ -18,7 +18,12 @@ const handleFileChange = (e: Event) => {
 }
 
 const handleUpload = (file: File) => {
-  uc = new WfUpload(file, new AxiosRequestStrategy('/file'))
+  uc = new WfUpload(
+    file,
+    new AxiosRequestStrategy('/file'),
+    undefined,
+    1024 * 1024 * 10
+  )
   uc.on('error', (e: any) => {
     console.log(e.message)
   })
@@ -43,7 +48,12 @@ const resume = () => {
 
 <template>
   <div>
-    <input type="file" @change="handleFileChange" />
+    <label for="file"
+      >进度{{ progress }}%<input
+        id="file"
+        type="file"
+        @change="handleFileChange"
+    /></label>
   </div>
   <div>
     <progress max="100" :value="progress" />
