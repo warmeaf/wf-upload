@@ -91,7 +91,11 @@ export class FileController {
     @UploadedFile() blob: Express.Multer.File,
   ): Promise<any> {
     await this.fileService.saveChunk(blob.buffer, chunk.hash);
-    await this.fileService.pushFileChunks(chunk.token, chunk.hash, chunk.index);
+    await this.fileService.pushFileChunks(
+      chunk.token,
+      chunk.hash,
+      parseInt(chunk.index),
+    );
     return response.status(200).json({
       status: 'ok',
     });
@@ -113,9 +117,12 @@ export class FileController {
         url: '',
       };
     } else {
+      // 表示这个文件上传之前中断过（比如上传过程中页面被刷新了）
+      // 根据 index 检查缺失部分的 hash，把缺失部分的 hash 补回来
+      await this.fileService.completeFileChunks(hash);
       return {
-        status: 'error',
-        url: '',
+        status: 'ok',
+        url: '文件 chunk 补完整了',
       };
     }
   }

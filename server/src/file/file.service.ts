@@ -57,6 +57,18 @@ export class FileService {
     return file.chunksLength === file.chunks.length;
   }
 
+  async completeFileChunks(hash: string) {
+    const file = await this.fileModel.findOne({ fileHash: hash }).exec();
+    const { chunksLength, chunks } = file;
+    for (let i = 0, len = chunksLength; i < len; i++) {
+      const hasChunk = chunks.find((chunk) => chunk.index == i);
+      if (!hasChunk) {
+        file.chunks.push({ hash, index: i });
+        file.save();
+      }
+    }
+  }
+
   async createFile(
     token: string,
     name: string,
