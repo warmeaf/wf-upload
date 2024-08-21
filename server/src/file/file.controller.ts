@@ -112,6 +112,7 @@ export class FileController {
     await this.fileService.setFileHash(token, hash);
     const valid = await this.fileService.checkFileChunksLength(hash);
     if (valid) {
+      await this.fileService.setUrl(hash);
       return {
         status: 'ok',
         url: '',

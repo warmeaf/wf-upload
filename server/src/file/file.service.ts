@@ -57,6 +57,20 @@ export class FileService {
     return file.chunksLength === file.chunks.length;
   }
 
+  async setUrl(hash: string) {
+    const file = await this.fileModel.findOne({ fileHash: hash }).exec();
+    if (!file) {
+      return null; // 或者抛出错误，根据实际情况决定
+    }
+    const { fileHash, name } = file;
+    const index = name.lastIndexOf('.');
+    const str = `_${fileHash.slice(0, 16)}`;
+    const url = name.slice(0, index) + str + name.slice(index);
+    file.url = url;
+
+    return file.save();
+  }
+
   async completeFileChunks(hash: string) {
     const file = await this.fileModel.findOne({ fileHash: hash }).exec();
     const { chunksLength, chunks } = file;
