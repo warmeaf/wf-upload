@@ -8,14 +8,14 @@ const file = ref<null | File>(null)
 const progress = ref<number>(0)
 const downloadList = ref([
   {
-    href: 'http://127.0.0.1:3000/file/02-%E5%A4%A7%E6%96%87%E4%BB%B6%E4%B8%8A%E4%BC%A0_d80060ea96119493.mp4',
-    fileName: '02-大文件上传_d80060ea96119493.mp4',
-    fileSize: '204',
-  },
-  {
     href: 'http://127.0.0.1:3000/file/05-%E5%89%8D%E7%AB%AF%E5%AD%A6%E4%B9%A0%E6%96%B9%E5%90%91_0f55b468b99b740d.mp4',
     fileName: '05-前端学习方向_0f55b468b99b740d.mp4',
     fileSize: '55.8',
+  },
+  {
+    href: 'http://127.0.0.1:3000/file/fcd4b5918cea9a220c0da171bb60c214_f059fd3eb749b91b.bin',
+    fileName: 'fcd4b5918cea9a220c0da171bb60c214_f059fd3eb749b91b.bin',
+    fileSize: '1341.44',
   },
 ])
 
