@@ -132,16 +132,18 @@ export class FileController {
 
   @Get(':url')
   async streamFile(@Param('url') url: string, @Res() res: Response) {
-    url = decodeURIComponent(url);
-    console.log('路由参数', url);
-    const stream = await this.fileService.getFileStream(url);
-    // 设置响应头，例如文件名和类型
-    // const disp = `attachment; filename*=UTF-8''${url}; filename='${url}';`;
-    // const len = file.size
-    res.setHeader('Content-Disposition', 'attachment; filename="aaa.mp4"');
+    url = encodeURIComponent(url);
+    const disp = `attachment; filename*=UTF-8''${url};`;
+    const file = await this.fileService.getFileByUrl(decodeURIComponent(url));
+    const stream = await this.fileService.getFileStream(
+      decodeURIComponent(url),
+    );
+    const len = file.size;
+
+    res.setHeader('Content-Disposition', disp);
     res.setHeader('Content-Type', 'binary/octet-stream');
-    res.setHeader('content-length', 58526594);
-    res.setHeader('Accept-Ranges', 'bytes')
+    res.setHeader('content-length', len);
+    res.setHeader('Accept-Ranges', 'bytes');
 
     // 将文件流通过管道响应给客户端
     stream.pipe(res);

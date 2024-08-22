@@ -33,6 +33,12 @@ export class FileService {
     }
   }
 
+  async getFileByUrl(url: string) {
+    return await this.fileModel.findOne({
+      url,
+    });
+  }
+
   async deleteFile(token: string) {
     await this.fileModel.deleteOne({ token }).exec();
   }
