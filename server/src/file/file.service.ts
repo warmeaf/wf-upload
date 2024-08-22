@@ -4,23 +4,15 @@ import { Model } from 'mongoose';
 import { Readable, PassThrough } from 'stream';
 import { FileDocument } from './schema/file.dto';
 import { FileChunkDocument } from './schema/fileChunk.dto';
-import { TaskQueue } from './TaskQueue';
-
-const processed: { [index: number]: any } = {};
-let nextProcess = 0;
 
 @Injectable()
 export class FileService {
-  private taskQueue: TaskQueue; // 任务队列
-
   constructor(
     @InjectModel(FileChunkDocument.name)
     private fileChunkModel: Model<FileChunkDocument>,
     @InjectModel(FileDocument.name)
     private fileModel: Model<FileDocument>,
-  ) {
-    this.taskQueue = new TaskQueue(3);
-  }
+  ) {}
 
   async saveChunk(chunk: Buffer, hash: string): Promise<FileChunkDocument> {
     const fileChunk = new this.fileChunkModel({ chunk, hash });
@@ -136,39 +128,30 @@ export class FileService {
     const fileChunks = file.chunks;
     const passThrough = new PassThrough();
 
-    // Sort chunks by index
     const sortedChunks = fileChunks.sort((a, b) => a.index - b.index);
     // console.log(sortedChunks);
 
-    for (const chunk of sortedChunks) {
-      this.taskQueue.add(async (): Promise<void> => {
-        const buffer = await this.getChunkBuffer(chunk.hash);
-        const chunkStream = this.bufferToStream(buffer);
-        chunkStream.pipe(passThrough, { end: false });
-        return new Promise((resolve) => {
-          chunkStream.on('end', () => {
-            console.log('run', chunk.index);
-            resolve();
-          });
-        });
-      });
-    }
+    // 逐个顺序处理分片
+    this.streamChunksSequentially({ sortedChunks, passThrough }).then(() => {
+      passThrough.end(); // 所有分片流完成后结束流
+    });
 
-    this.taskQueue.on('drain', () => passThrough.end());
     return passThrough;
   }
 
-  private async handleStream(payload): Promise<void> {
-    const { passThrough, chunk } = payload;
-    const buffer = await this.getChunkBuffer(chunk.hash);
-    const chunkStream = this.bufferToStream(buffer);
-    chunkStream.pipe(passThrough, { end: false });
-    return new Promise((resolve) => {
-      chunkStream.on('end', () => {
-        console.log('fdsag');
-        resolve();
+  private async streamChunksSequentially(payload): Promise<void> {
+    const { sortedChunks, passThrough } = payload;
+    for (const chunk of sortedChunks) {
+      const buffer = await this.getChunkBuffer(chunk.hash);
+      const chunkStream = this.bufferToStream(buffer);
+
+      // 等待当前分片流结束再处理下一个分片
+      await new Promise<void>((resolve) => {
+        // console.log('run', chunk.index);
+        chunkStream.pipe(passThrough, { end: false });
+        chunkStream.on('end', resolve);
       });
-    });
+    }
   }
 
   private async getChunkBuffer(hash: string): Promise<Buffer> {
