@@ -65,6 +65,7 @@ importers:
       '@types/supertest': ^6.0.0
       '@typescript-eslint/eslint-plugin': ^7.0.0
       '@typescript-eslint/parser': ^7.0.0
+      '@wf-upload/utils': workspace:*
       eslint: ^8.42.0
       eslint-config-prettier: ^9.0.0
       eslint-plugin-prettier: ^5.0.0
@@ -87,6 +88,7 @@ importers:
       '@nestjs/core': 10.4.0_m5x3zljdz6vncw6q4ayy4ol5ui
       '@nestjs/mongoose': 10.0.10_cej7scjfpzj3ten4sk35ucaxcy
       '@nestjs/platform-express': 10.4.0_vr635bwillr3vcx27cyvtjz3ou
+      '@wf-upload/utils': link:../packages/utils
       jsonwebtoken: 9.0.2
       mongoose: 8.5.2
       reflect-metadata: 0.2.2

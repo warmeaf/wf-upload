@@ -1,7 +1,9 @@
 import {
   Controller,
   Post,
+  Get,
   Res,
+  Param,
   Inject,
   Body,
   UseInterceptors,
@@ -126,5 +128,22 @@ export class FileController {
         url: '文件 chunk 补完整了',
       };
     }
+  }
+
+  @Get(':url')
+  async streamFile(@Param('url') url: string, @Res() res: Response) {
+    url = decodeURIComponent(url);
+    console.log('路由参数', url);
+    const stream = await this.fileService.getFileStream(url);
+    // 设置响应头，例如文件名和类型
+    // const disp = `attachment; filename*=UTF-8''${url}; filename='${url}';`;
+    // const len = file.size
+    res.setHeader('Content-Disposition', 'attachment; filename="aaa.mp4"');
+    res.setHeader('Content-Type', 'binary/octet-stream');
+    res.setHeader('content-length', 58526594);
+    res.setHeader('Accept-Ranges', 'bytes')
+
+    // 将文件流通过管道响应给客户端
+    stream.pipe(res);
   }
 }

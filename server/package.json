@@ -28,7 +28,8 @@
     "mongoose": "^8.5.2",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1",
-    "uuid": "^10.0.0"
+    "uuid": "^10.0.0",
+    "@wf-upload/utils": "workspace:*"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
