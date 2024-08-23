@@ -44,6 +44,6 @@ export interface RequestStrategy {
   ): Promise<
     T extends 'chunk'
       ? { status: string; hasFile: boolean }
-      : { hasFile: boolean; rest: number[]; url: string }
+      : { status: string; hasFile: boolean; url: string }
   >
 }

@@ -72,14 +72,17 @@ export class FileController {
       const exists = await this.fileService.checkChunkHash(hash);
       return { status: 'ok', hasFile: exists };
     } else if (type === 'file') {
+      let url = '';
       const isHasFile = await this.fileService.checkFileHah(hash);
       if (isHasFile) {
         await this.fileService.deleteFile(token);
+        const file = await this.fileService.getFileByHash(hash);
+        url = file.url;
       }
       return {
         status: 'ok',
         hasFile: isHasFile,
-        rest: [[200, 300]],
+        url,
       };
     }
   }
@@ -110,26 +113,32 @@ export class FileController {
     url: string;
   }> {
     const { token, hash } = body;
+    let url = '';
 
     await this.fileService.setFileHash(token, hash);
     const valid = await this.fileService.checkFileChunksLength(hash);
     if (valid) {
       await this.fileService.setUrl(hash);
+      const file = await this.fileService.getFileByHash(hash);
+      url = file.url;
       return {
         status: 'ok',
-        url: '',
+        url,
       };
     } else {
       // 表示这个文件上传之前中断过（比如上传过程中页面被刷新了）
       // 根据 index 检查缺失部分的 hash，把缺失部分的 hash 补回来
       await this.fileService.completeFileChunks(hash);
+      const file = await this.fileService.getFileByHash(hash);
+      url = file.url;
       return {
         status: 'ok',
-        url: '文件 chunk 补完整了',
+        url,
       };
     }
   }
 
+  // 下载文件
   @Get(':url')
   async streamFile(@Param('url') url: string, @Res() res: Response) {
     url = encodeURIComponent(url);

@@ -64,7 +64,7 @@ export class FetchRequestStrategy implements RequestStrategy {
   ): Promise<
     T extends 'chunk'
       ? { status: string; hasFile: boolean }
-      : { hasFile: boolean; rest: number[]; url: string }
+      : { status: string; hasFile: boolean; url: string }
   > {
     const data = {
       token,

@@ -39,6 +39,12 @@ export class FileService {
     });
   }
 
+  async getFileByHash(hash: string) {
+    return await this.fileModel.findOne({
+      fileHash: hash,
+    });
+  }
+
   async deleteFile(token: string) {
     await this.fileModel.deleteOne({ token }).exec();
   }
