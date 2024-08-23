@@ -1,7 +1,7 @@
 import type { Chunk, RequestStrategy } from './type'
-import { ChunkSplitor } from './ChunkSplitor'
-import { DefaultRequestStrategy } from './DefaultRequestStrategy'
-import { MultiThreadSplitor } from './MutilThreadSplitor'
+import { SplitTemplate } from './SplitTemplate'
+import { FetchRequestStrategy as DefaultRequestStrategy } from './FetchRequestStrategy'
+import { MultiThreadSplitor as DefaultSplit } from './MutilThreadSplitor'
 import { Task, TaskQueue } from '@wf-upload/utils'
 import { EventEmitter } from '@wf-upload/utils'
 
@@ -15,8 +15,8 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
 
   constructor(
     private file: File,
-    private requestStrategy: RequestStrategy = new DefaultRequestStrategy(),
-    private splitStrategy: ChunkSplitor = new MultiThreadSplitor(
+    private requestStrategy: RequestStrategy = new DefaultRequestStrategy('/file'),
+    private splitStrategy: SplitTemplate = new DefaultSplit(
       file,
       1024 * 1024 * 5
     )

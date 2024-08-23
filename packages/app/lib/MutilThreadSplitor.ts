@@ -1,8 +1,8 @@
 import { EventEmitter } from '@wf-upload/utils'
-import { ChunkSplitor } from './ChunkSplitor'
+import { SplitTemplate } from './SplitTemplate'
 import type { Chunk } from './type'
 
-export class MultiThreadSplitor extends ChunkSplitor {
+export class MultiThreadSplitor extends SplitTemplate {
   private workers: Worker[] = new Array(navigator.hardwareConcurrency || 4)
     .fill(0)
     .map(

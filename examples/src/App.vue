@@ -30,7 +30,7 @@ const handleFileChange = (e: Event) => {
 }
 
 const handleUpload = (file: File) => {
-  uc = new WfUpload(file, new AxiosRequestStrategy('/file'))
+  uc = new WfUpload(file)
   uc.on('error', (e: any) => {
     console.log(e.message)
   })

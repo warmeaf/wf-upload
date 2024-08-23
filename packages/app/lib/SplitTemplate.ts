@@ -3,7 +3,7 @@ import { EventEmitter } from '@wf-upload/utils'
 import { createChunk } from './chunk'
 import type { Chunk, ChunkSplitorEvents } from './type'
 
-export abstract class ChunkSplitor extends EventEmitter<ChunkSplitorEvents> {
+export abstract class SplitTemplate extends EventEmitter<ChunkSplitorEvents> {
   protected chunkSize: number // 分片大小（单位字节）
   protected file: File // 待分片的文件
   protected hash?: string // 整个文件的hash
