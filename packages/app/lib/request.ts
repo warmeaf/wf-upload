@@ -7,30 +7,23 @@ import { EventEmitter } from '@wf-upload/utils'
 
 let emitter: EventEmitter<'chunks'> | null = null
 export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
-  private requestStrategy: RequestStrategy // 请求策略
-  private splitStrategy: ChunkSplitor // 分片策略
   private taskQueue: TaskQueue // 任务队列
-  private file: File // 上传的文件
   private fileHah: string // 上传的文件 hash
   private token: string // 上传的 token
-  private chunkSize: number // 上传的分片大小
   private uploadedSize: number // 已经上传的分片
   private isHasFile: Boolean // 服务器是否已经存在整个文件
 
   constructor(
-    file: File,
-    requestStrategy?: RequestStrategy,
-    splitStrategy?: ChunkSplitor,
-    chunkSize?: number
+    private file: File,
+    private requestStrategy: RequestStrategy = new DefaultRequestStrategy(),
+    private splitStrategy: ChunkSplitor = new MultiThreadSplitor(
+      file,
+      1024 * 1024 * 5
+    )
   ) {
     super()
-    this.file = file
     this.fileHah = ''
-    this.chunkSize = chunkSize || 1024 * 1024 * 5
     this.isHasFile = false
-    this.requestStrategy = requestStrategy || new DefaultRequestStrategy()
-    this.splitStrategy =
-      splitStrategy || new MultiThreadSplitor(this.file, this.chunkSize)
     this.taskQueue = new TaskQueue()
     this.token = ''
     this.uploadedSize = 0
@@ -93,12 +86,7 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
       if (!this.fileHah) return
       const res = await this.requestStrategy.mergeFile(this.token, this.fileHah)
       if (res.status === 'ok') {
-        // 清空并发任务队列
-        this.taskQueue.clear()
-        // 销毁分片计算
-        this.splitStrategy.dispose()
-        // 清空分片数组
-        this.splitStrategy.clear()
+        this.cleanupResources()
         this.emit('end', res)
         this.emit('progress', this.uploadedSize, this.file.size)
       }
@@ -125,16 +113,20 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
       'file'
     )
     if (resp.hasFile) {
-      // 清空并发任务队列
-      this.taskQueue.clear()
-      // 销毁分片计算
-      this.splitStrategy.dispose()
-      // 清空分片数组
-      this.splitStrategy.clear()
+      this.cleanupResources()
       this.uploadedSize = this.file.size
       this.emit('end', {})
       this.emit('progress', this.uploadedSize, this.file.size)
     }
+  }
+
+  private cleanupResources() {
+    // 清空并发任务队列
+    this.taskQueue.clear()
+    // 销毁分片计算
+    this.splitStrategy.dispose()
+    // 清空分片数组
+    this.splitStrategy.clear()
   }
 
   pause(): void {
