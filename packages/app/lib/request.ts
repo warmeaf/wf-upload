@@ -2,20 +2,27 @@ import type { Chunk, RequestStrategy } from './type'
 import { SplitTemplate } from './SplitTemplate'
 import { FetchRequestStrategy as DefaultRequestStrategy } from './FetchRequestStrategy'
 import { MultiThreadSplitor as DefaultSplit } from './MutilThreadSplitor'
-import { Task, TaskQueue } from '@wf-upload/utils'
-import { EventEmitter } from '@wf-upload/utils'
+import { Task, TaskQueue, EventEmitter } from '@wf-upload/utils'
 
-let emitter: EventEmitter<'chunks'> | null = null
 export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
-  private taskQueue: TaskQueue // 任务队列
-  private fileHah: string // 上传的文件 hash
-  private token: string // 上传的 token
-  private uploadedSize: number // 已经上传的分片
-  private isHasFile: Boolean // 服务器是否已经存在整个文件
+  // 任务队列
+  private taskQueue: TaskQueue
+  // 上传的文件 hash
+  private fileHah: string
+  // 上传的 token
+  private token: string
+  // 已经上传的分片大小
+  private uploadedSize: number
+  // 服务器是否已经存在整个文件
+  private isHasFile: Boolean
+  // 分片时返回的 emitter
+  private emitter: EventEmitter<'chunks'> | null = null
 
   constructor(
     private file: File,
-    private requestStrategy: RequestStrategy = new DefaultRequestStrategy('/file'),
+    private requestStrategy: RequestStrategy = new DefaultRequestStrategy(
+      '/file'
+    ),
     private splitStrategy: SplitTemplate = new DefaultSplit(
       file,
       1024 * 1024 * 5
@@ -29,7 +36,7 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
     this.uploadedSize = 0
   }
 
-  async init() {
+  private async init() {
     const res = await this.requestStrategy.createFile({
       name: this.file.name,
       type: this.file.type,
@@ -138,7 +145,7 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
 
   resume(): void {
     // 重启事件分发
-    emitter && this.splitStrategy.resume(emitter)
+    this.emitter && this.splitStrategy.resume(this.emitter)
     // 重启任务队列
     this.taskQueue.start()
   }
@@ -146,7 +153,7 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
   async start() {
     try {
       await this.init()
-      emitter = this.splitStrategy.split()
+      this.emitter = this.splitStrategy.split()
     } catch (e: any) {
       this.emit('error', e)
     }
