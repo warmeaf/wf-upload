@@ -142,8 +142,14 @@ export class FileController {
   @Get(':url')
   async streamFile(@Param('url') url: string, @Res() res: Response) {
     url = encodeURIComponent(url);
-    const disp = `attachment; filename*=UTF-8''${url};`;
     const file = await this.fileService.getFileByUrl(decodeURIComponent(url));
+    if (!file) {
+      res.status(404).send({
+        msg: '服务器没有该文件',
+      });
+    }
+
+    const disp = `attachment; filename*=UTF-8''${url};`;
     const stream = await this.fileService.getFileStream(
       decodeURIComponent(url),
     );
