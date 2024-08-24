@@ -8,6 +8,11 @@ const file = ref<null | File>(null)
 const progress = ref<number>(0)
 const downloadList = ref([
   {
+    href: 'http://127.0.0.1:3000/file/%E8%BD%AC%E6%AD%A3%E8%BF%B0%E8%81%8C%E6%B1%AA%E5%9B%BD%E8%BE%89_f1aed9fa8b6a5c72.pptx',
+    fileName: '转正述职汪国辉_f1aed9fa8b6a5c72.pptx',
+    fileSize: '3.11',
+  },
+  {
     href: 'http://127.0.0.1:3000/file/05-%E5%89%8D%E7%AB%AF%E5%AD%A6%E4%B9%A0%E6%96%B9%E5%90%91_0f55b468b99b740d.mp4',
     fileName: '05-前端学习方向_0f55b468b99b740d.mp4',
     fileSize: '55.8',
