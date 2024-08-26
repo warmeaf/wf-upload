@@ -12,21 +12,13 @@ import {
 import { Express, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UniqueCodeService } from '../unique-code/unique-code.service';
-import type { UploadChunk } from './type';
 import { FileService } from './file.service';
-
-interface FileBody {
-  name: string;
-  size: number;
-  type: string;
-  chunksLength: number;
-}
-
-interface PatchHashBody {
-  token: string;
-  hash: string;
-  type: 'chunk' | 'file';
-}
+import {
+  CreateFileDto,
+  PatchHashDto,
+  UploadChunkDto,
+  MergeFileDto,
+} from './file.dto';
 
 @Controller('file')
 export class FileController {
@@ -37,7 +29,7 @@ export class FileController {
 
   // 创建文件
   @Post('create')
-  async create(@Body() body: FileBody): Promise<{
+  async create(@Body() body: CreateFileDto): Promise<{
     status: string;
     token: string;
   }> {
@@ -59,7 +51,7 @@ export class FileController {
 
   // hash 校验
   @Post('patchHash')
-  async patchHash(@Body() body: PatchHashBody): Promise<any> {
+  async patchHash(@Body() body: PatchHashDto): Promise<any> {
     const { token, hash, type } = body;
     const valid = this.uniqueCodeService.verifyUniqueCode(token);
     if (!valid) {
@@ -92,7 +84,7 @@ export class FileController {
   @UseInterceptors(FileInterceptor('blob'))
   async uploadChunk(
     @Res() response: Response,
-    @Body() chunk: UploadChunk,
+    @Body() chunk: UploadChunkDto,
     @UploadedFile() blob: Express.Multer.File,
   ): Promise<any> {
     await this.fileService.saveChunk(blob.buffer, chunk.hash);
@@ -108,7 +100,7 @@ export class FileController {
 
   // 合并文件
   @Post('merge')
-  async mergeFile(@Body() body: { token: string; hash: string }): Promise<{
+  async mergeFile(@Body() body: MergeFileDto): Promise<{
     status: string;
     url: string;
   }> {
