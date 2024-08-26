@@ -70,13 +70,15 @@ export class FileService {
   }
 
   async checkChunkExists(hash: string): Promise<boolean> {
-    const exists = await this.fileChunkModel.exists({ hash });
-    return Boolean(exists);
+    const count = await this.fileChunkModel.countDocuments({ hash }).limit(1);
+    return count > 0;
   }
 
   async checkFileExists(hash: string): Promise<boolean> {
-    const file = await this.fileModel.findOne({ fileHash: hash }).exec();
-    return !!file;
+    const count = await this.fileModel
+      .countDocuments({ fileHash: hash })
+      .limit(1);
+    return count > 0;
   }
 
   async getFileByUrl(url: string) {
@@ -117,17 +119,19 @@ export class FileService {
   async addMissingChunks(hash: string): Promise<void> {
     const file = await this.findFileByHash(hash);
     const { chunksLength, chunks } = file;
-    
+
     const missingChunks = [];
     for (let i = 0; i < chunksLength; i++) {
-      if (!chunks.some(chunk => chunk.index === i)) {
+      if (!chunks.some((chunk) => chunk.index === i)) {
         missingChunks.push({ hash, index: i });
       }
     }
 
     if (missingChunks.length > 0) {
-      file.chunks.push(...missingChunks);
-      await file.save();
+      await this.fileModel.updateOne(
+        { fileHash: hash },
+        { $push: { chunks: { $each: missingChunks } } },
+      );
     }
   }
 
@@ -159,21 +163,23 @@ export class FileService {
     hash: string,
     index: number,
   ): Promise<FileDocument> {
-    const updatedFile = await this.fileModel.findOneAndUpdate(
-      { token },
-      { $push: { chunks: { hash, index } } },
-      { new: true }
-    ).exec();
-  
+    const updatedFile = await this.fileModel
+      .findOneAndUpdate(
+        { token },
+        { $push: { chunks: { hash, index } } },
+        { new: true },
+      )
+      .exec();
+
     if (!updatedFile) {
       throw new NotFoundException(`File with token ${token} not found`);
     }
-  
+
     return updatedFile;
   }
 
   async getFileStream(url: string): Promise<PassThrough> {
-    const file = await this.fileModel.findOne({ url });
+    const file = await this.fileModel.findOne({ url }, { chunks: 1 }).lean();
     if (!file) {
       throw new NotFoundException(`File with url ${url} not found`);
     }
