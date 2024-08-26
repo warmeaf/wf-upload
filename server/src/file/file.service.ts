@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Readable, PassThrough } from 'stream';
@@ -53,7 +53,7 @@ export class FileService {
     const file = await this.fileModel.findOne({ token }).exec();
 
     if (!file) {
-      return null; // 或者抛出错误，根据实际情况决定
+      throw new NotFoundException(`File with token ${token} not found`);
     }
 
     file.fileHash = hash;
@@ -64,7 +64,7 @@ export class FileService {
   async checkFileChunksLength(hash: string): Promise<Boolean | null> {
     const file = await this.fileModel.findOne({ fileHash: hash }).exec();
     if (!file) {
-      return null; // 或者抛出错误，根据实际情况决定
+      throw new NotFoundException(`File with hash ${hash} not found`);
     }
 
     return file.chunksLength === file.chunks.length;
@@ -73,7 +73,7 @@ export class FileService {
   async setUrl(hash: string) {
     const file = await this.fileModel.findOne({ fileHash: hash }).exec();
     if (!file) {
-      return null; // 或者抛出错误，根据实际情况决定
+      throw new NotFoundException(`File with hash ${hash} not found`);
     }
     const { fileHash, name } = file;
     const index = name.lastIndexOf('.');
@@ -127,7 +127,7 @@ export class FileService {
     const file = await this.fileModel.findOne({ token }).exec();
 
     if (!file) {
-      return null; // 或者抛出错误，根据实际情况决定
+      throw new NotFoundException(`File with token ${token} not found`);
     }
 
     file.chunks.push({ hash, index });
@@ -170,7 +170,7 @@ export class FileService {
     // 根据 chunkId 从数据库或其他存储中获取分片数据
     const chunk = await this.fileChunkModel.findOne({ hash });
     if (!chunk || !chunk.chunk) {
-      throw new Error('Chunk not found');
+      throw new NotFoundException(`chunk with hash ${hash} not found`);
     }
     return Buffer.from(chunk.chunk.buffer);
   }
