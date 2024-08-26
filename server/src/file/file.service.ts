@@ -31,6 +31,15 @@ export class FileService {
     return file;
   }
 
+  private async getChunkBuffer(hash: string): Promise<Buffer> {
+    // 根据 chunkId 从数据库或其他存储中获取分片数据
+    const chunk = await this.fileChunkModel.findOne({ hash });
+    if (!chunk || !chunk.chunk) {
+      throw new NotFoundException(`chunk with hash ${hash} not found`);
+    }
+    return Buffer.from(chunk.chunk.buffer);
+  }
+
   async saveChunk(chunk: Buffer, hash: string): Promise<FileChunkDocument> {
     const fileChunk = new this.fileChunkModel({ chunk, hash });
     return fileChunk.save();
