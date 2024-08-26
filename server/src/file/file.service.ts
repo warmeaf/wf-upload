@@ -19,12 +19,12 @@ export class FileService {
     return fileChunk.save();
   }
 
-  async checkChunkHash(hash: string): Promise<boolean> {
+  async checkChunkExists(hash: string): Promise<boolean> {
     const exists = await this.fileChunkModel.exists({ hash });
     return Boolean(exists);
   }
 
-  async checkFileHah(hash: string) {
+  async checkFileExists(hash: string) {
     const file = await this.fileModel.findOne({ fileHash: hash }).exec();
     if (file) {
       return true;
@@ -45,11 +45,11 @@ export class FileService {
     });
   }
 
-  async deleteFile(token: string) {
+  async deleteFileByToken(token: string) {
     await this.fileModel.deleteOne({ token }).exec();
   }
 
-  async setFileHash(token: string, hash: string) {
+  async updateFileHash(token: string, hash: string) {
     const file = await this.fileModel.findOne({ token }).exec();
 
     if (!file) {
@@ -61,7 +61,7 @@ export class FileService {
     return file.save();
   }
 
-  async checkFileChunksLength(hash: string): Promise<Boolean | null> {
+  async isFileComplete(hash: string): Promise<Boolean | null> {
     const file = await this.fileModel.findOne({ fileHash: hash }).exec();
     if (!file) {
       throw new NotFoundException(`File with hash ${hash} not found`);
@@ -70,7 +70,7 @@ export class FileService {
     return file.chunksLength === file.chunks.length;
   }
 
-  async setUrl(hash: string) {
+  async generateAndSetFileUrl(hash: string) {
     const file = await this.fileModel.findOne({ fileHash: hash }).exec();
     if (!file) {
       throw new NotFoundException(`File with hash ${hash} not found`);
@@ -84,7 +84,7 @@ export class FileService {
     return file.save();
   }
 
-  async completeFileChunks(hash: string) {
+  async addMissingChunks(hash: string) {
     const file = await this.fileModel.findOne({ fileHash: hash }).exec();
     const { chunksLength, chunks } = file;
     for (let i = 0, len = chunksLength; i < len; i++) {
@@ -119,7 +119,7 @@ export class FileService {
     return fileChunk.save();
   }
 
-  async pushFileChunks(
+  async addChunkToFile(
     token: string,
     hash: string,
     index: number,

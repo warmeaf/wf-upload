@@ -69,13 +69,13 @@ export class FileController {
     }
 
     if (type === 'chunk') {
-      const exists = await this.fileService.checkChunkHash(hash);
+      const exists = await this.fileService.checkChunkExists(hash);
       return { status: 'ok', hasFile: exists };
     } else if (type === 'file') {
       let url = '';
-      const isHasFile = await this.fileService.checkFileHah(hash);
+      const isHasFile = await this.fileService.checkFileExists(hash);
       if (isHasFile) {
-        await this.fileService.deleteFile(token);
+        await this.fileService.deleteFileByToken(token);
         const file = await this.fileService.getFileByHash(hash);
         url = file.url;
       }
@@ -96,7 +96,7 @@ export class FileController {
     @UploadedFile() blob: Express.Multer.File,
   ): Promise<any> {
     await this.fileService.saveChunk(blob.buffer, chunk.hash);
-    await this.fileService.pushFileChunks(
+    await this.fileService.addChunkToFile(
       chunk.token,
       chunk.hash,
       parseInt(chunk.index),
@@ -115,10 +115,10 @@ export class FileController {
     const { token, hash } = body;
     let url = '';
 
-    await this.fileService.setFileHash(token, hash);
-    const valid = await this.fileService.checkFileChunksLength(hash);
+    await this.fileService.updateFileHash(token, hash);
+    const valid = await this.fileService.isFileComplete(hash);
     if (valid) {
-      await this.fileService.setUrl(hash);
+      await this.fileService.generateAndSetFileUrl(hash);
       const file = await this.fileService.getFileByHash(hash);
       url = file.url;
       return {
@@ -128,7 +128,7 @@ export class FileController {
     } else {
       // 表示这个文件上传之前中断过（比如上传过程中页面被刷新了）
       // 根据 index 检查缺失部分的 hash，把缺失部分的 hash 补回来
-      await this.fileService.completeFileChunks(hash);
+      await this.fileService.addMissingChunks(hash);
       const file = await this.fileService.getFileByHash(hash);
       url = file.url;
       return {
