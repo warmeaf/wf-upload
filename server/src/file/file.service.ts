@@ -159,9 +159,17 @@ export class FileService {
     hash: string,
     index: number,
   ): Promise<FileDocument> {
-    const file = await this.findFileByToken(token);
-    file.chunks.push({ hash, index });
-    return file.save();
+    const updatedFile = await this.fileModel.findOneAndUpdate(
+      { token },
+      { $push: { chunks: { hash, index } } },
+      { new: true }
+    ).exec();
+  
+    if (!updatedFile) {
+      throw new NotFoundException(`File with token ${token} not found`);
+    }
+  
+    return updatedFile;
   }
 
   async getFileStream(url: string): Promise<PassThrough> {
