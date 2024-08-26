@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Readable, PassThrough } from 'stream';
+import { pipeline } from 'stream/promises';
 import { FileDocument } from './schema/file.dto';
 import { FileChunkDocument } from './schema/fileChunk.dto';
 
@@ -189,9 +190,16 @@ export class FileService {
     const sortedChunks = fileChunks.sort((a, b) => a.index - b.index);
     // console.log(sortedChunks);
 
-    // 逐个顺序处理分片
-    this.streamChunksSequentially({ sortedChunks, passThrough }).then(() => {
-      passThrough.end(); // 所有分片流完成后结束流
+    const streamChunks = async function* () {
+      for (const chunk of sortedChunks) {
+        const buffer = await this.getChunkBuffer(chunk.hash);
+        yield buffer;
+      }
+    }.bind(this);
+
+    pipeline(Readable.from(streamChunks()), passThrough).catch((err) => {
+      console.error('Pipeline failed', err);
+      passThrough.destroy(err);
     });
 
     return passThrough;
