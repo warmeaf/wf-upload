@@ -14,6 +14,22 @@ export class FileService {
     private fileModel: Model<FileDocument>,
   ) {}
 
+  private async findFileByHash(hash: string): Promise<FileDocument> {
+    const file = await this.fileModel.findOne({ fileHash: hash }).exec();
+    if (!file) {
+      throw new NotFoundException(`File with hash ${hash} not found`);
+    }
+    return file;
+  }
+
+  private async findFileByToken(token: string): Promise<FileDocument> {
+    const file = await this.fileModel.findOne({ token }).exec();
+    if (!file) {
+      throw new NotFoundException(`File with token ${token} not found`);
+    }
+    return file;
+  }
+
   async saveChunk(chunk: Buffer, hash: string): Promise<FileChunkDocument> {
     const fileChunk = new this.fileChunkModel({ chunk, hash });
     return fileChunk.save();
@@ -24,13 +40,9 @@ export class FileService {
     return Boolean(exists);
   }
 
-  async checkFileExists(hash: string) {
+  async checkFileExists(hash: string): Promise<boolean> {
     const file = await this.fileModel.findOne({ fileHash: hash }).exec();
-    if (file) {
-      return true;
-    } else {
-      return false;
-    }
+    return !!file;
   }
 
   async getFileByUrl(url: string) {
@@ -40,9 +52,7 @@ export class FileService {
   }
 
   async getFileByHash(hash: string) {
-    return await this.fileModel.findOne({
-      fileHash: hash,
-    });
+    return this.findFileByHash(hash);
   }
 
   async deleteFileByToken(token: string) {
@@ -50,48 +60,34 @@ export class FileService {
   }
 
   async updateFileHash(token: string, hash: string) {
-    const file = await this.fileModel.findOne({ token }).exec();
-
-    if (!file) {
-      throw new NotFoundException(`File with token ${token} not found`);
-    }
-
+    const file = await this.findFileByToken(token);
     file.fileHash = hash;
-
     return file.save();
   }
 
-  async isFileComplete(hash: string): Promise<Boolean | null> {
-    const file = await this.fileModel.findOne({ fileHash: hash }).exec();
-    if (!file) {
-      throw new NotFoundException(`File with hash ${hash} not found`);
-    }
-
+  async isFileComplete(hash: string): Promise<boolean> {
+    const file = await this.findFileByHash(hash);
     return file.chunksLength === file.chunks.length;
   }
 
   async generateAndSetFileUrl(hash: string) {
-    const file = await this.fileModel.findOne({ fileHash: hash }).exec();
-    if (!file) {
-      throw new NotFoundException(`File with hash ${hash} not found`);
-    }
+    const file = await this.findFileByHash(hash);
     const { fileHash, name } = file;
     const index = name.lastIndexOf('.');
     const str = `_${fileHash.slice(0, 16)}`;
     const url = name.slice(0, index) + str + name.slice(index);
     file.url = url;
-
     return file.save();
   }
 
   async addMissingChunks(hash: string) {
-    const file = await this.fileModel.findOne({ fileHash: hash }).exec();
+    const file = await this.findFileByHash(hash);
     const { chunksLength, chunks } = file;
     for (let i = 0, len = chunksLength; i < len; i++) {
       const hasChunk = chunks.find((chunk) => chunk.index == i);
       if (!hasChunk) {
         file.chunks.push({ hash, index: i });
-        file.save();
+        await file.save();
       }
     }
   }
@@ -123,15 +119,9 @@ export class FileService {
     token: string,
     hash: string,
     index: number,
-  ): Promise<FileDocument | null> {
-    const file = await this.fileModel.findOne({ token }).exec();
-
-    if (!file) {
-      throw new NotFoundException(`File with token ${token} not found`);
-    }
-
+  ): Promise<FileDocument> {
+    const file = await this.findFileByToken(token);
     file.chunks.push({ hash, index });
-
     return file.save();
   }
 
