@@ -30,6 +30,40 @@ export class FileService {
     return file;
   }
 
+  private async streamChunksSequentially(payload: {
+    sortedChunks: Array<{ hash: string; index: number }>;
+    passThrough: PassThrough;
+  }): Promise<void> {
+    const { sortedChunks, passThrough } = payload;
+    for (const chunk of sortedChunks) {
+      const buffer = await this.getChunkBuffer(chunk.hash);
+      const chunkStream = this.bufferToStream(buffer);
+
+      // 等待当前分片流结束再处理下一个分片
+      await new Promise<void>((resolve) => {
+        // console.log('run', chunk.index);
+        chunkStream.pipe(passThrough, { end: false });
+        chunkStream.on('end', resolve);
+      });
+    }
+  }
+
+  private async getChunkBuffer(hash: string): Promise<Buffer> {
+    // 根据 chunkId 从数据库或其他存储中获取分片数据
+    const chunk = await this.fileChunkModel.findOne({ hash });
+    if (!chunk || !chunk.chunk) {
+      throw new NotFoundException(`chunk with hash ${hash} not found`);
+    }
+    return Buffer.from(chunk.chunk.buffer);
+  }
+
+  private bufferToStream(buffer: Buffer): Readable {
+    const readable = new Readable();
+    readable.push(buffer);
+    readable.push(null); // 表示流的结束
+    return readable;
+  }
+
   async saveChunk(chunk: Buffer, hash: string): Promise<FileChunkDocument> {
     const fileChunk = new this.fileChunkModel({ chunk, hash });
     return fileChunk.save();
@@ -125,8 +159,11 @@ export class FileService {
     return file.save();
   }
 
-  async getFileStream(url: string) {
+  async getFileStream(url: string): Promise<PassThrough> {
     const file = await this.fileModel.findOne({ url });
+    if (!file) {
+      throw new NotFoundException(`File with url ${url} not found`);
+    }
     const fileChunks = file.chunks;
     const passThrough = new PassThrough();
 
@@ -139,36 +176,5 @@ export class FileService {
     });
 
     return passThrough;
-  }
-
-  private async streamChunksSequentially(payload): Promise<void> {
-    const { sortedChunks, passThrough } = payload;
-    for (const chunk of sortedChunks) {
-      const buffer = await this.getChunkBuffer(chunk.hash);
-      const chunkStream = this.bufferToStream(buffer);
-
-      // 等待当前分片流结束再处理下一个分片
-      await new Promise<void>((resolve) => {
-        // console.log('run', chunk.index);
-        chunkStream.pipe(passThrough, { end: false });
-        chunkStream.on('end', resolve);
-      });
-    }
-  }
-
-  private async getChunkBuffer(hash: string): Promise<Buffer> {
-    // 根据 chunkId 从数据库或其他存储中获取分片数据
-    const chunk = await this.fileChunkModel.findOne({ hash });
-    if (!chunk || !chunk.chunk) {
-      throw new NotFoundException(`chunk with hash ${hash} not found`);
-    }
-    return Buffer.from(chunk.chunk.buffer);
-  }
-
-  private bufferToStream(buffer: Buffer): Readable {
-    const readable = new Readable();
-    readable.push(buffer);
-    readable.push(null); // 表示流的结束
-    return readable;
   }
 }
