@@ -91,7 +91,7 @@ export class FileController {
     await this.fileService.addChunkToFile(
       chunk.token,
       chunk.hash,
-      parseInt(chunk.index),
+      Number(chunk.index),
     );
     return response.status(200).json({
       status: 'ok',
