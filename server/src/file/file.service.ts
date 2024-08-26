@@ -31,24 +31,6 @@ export class FileService {
     return file;
   }
 
-  private async streamChunksSequentially(payload: {
-    sortedChunks: Array<{ hash: string; index: number }>;
-    passThrough: PassThrough;
-  }): Promise<void> {
-    const { sortedChunks, passThrough } = payload;
-    for (const chunk of sortedChunks) {
-      const buffer = await this.getChunkBuffer(chunk.hash);
-      const chunkStream = this.bufferToStream(buffer);
-
-      // 等待当前分片流结束再处理下一个分片
-      await new Promise<void>((resolve) => {
-        // console.log('run', chunk.index);
-        chunkStream.pipe(passThrough, { end: false });
-        chunkStream.on('end', resolve);
-      });
-    }
-  }
-
   private async getChunkBuffer(hash: string): Promise<Buffer> {
     // 根据 chunkId 从数据库或其他存储中获取分片数据
     const chunk = await this.fileChunkModel.findOne({ hash });
