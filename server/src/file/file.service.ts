@@ -114,15 +114,20 @@ export class FileService {
     return file.save();
   }
 
-  async addMissingChunks(hash: string) {
+  async addMissingChunks(hash: string): Promise<void> {
     const file = await this.findFileByHash(hash);
     const { chunksLength, chunks } = file;
-    for (let i = 0, len = chunksLength; i < len; i++) {
-      const hasChunk = chunks.find((chunk) => chunk.index == i);
-      if (!hasChunk) {
-        file.chunks.push({ hash, index: i });
-        await file.save();
+    
+    const missingChunks = [];
+    for (let i = 0; i < chunksLength; i++) {
+      if (!chunks.some(chunk => chunk.index === i)) {
+        missingChunks.push({ hash, index: i });
       }
+    }
+
+    if (missingChunks.length > 0) {
+      file.chunks.push(...missingChunks);
+      await file.save();
     }
   }
 
