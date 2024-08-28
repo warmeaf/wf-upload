@@ -1,6 +1,42 @@
 # 请求策略
 
-wf-upload 内部基于 fetch 实现了默认的请求策略，同时也可以自定义请求策略，比如基于 axios 实现自定义的请求策略：
+wf-upload 内部基于 fetch 实现了默认的请求策略，同时也可以根据接口 RequestStrategy 实现自定义的请求策略。
+
+## 请求策略接口类型
+
+```TypeScript
+export interface RequestStrategy {
+  // 文件创建请求
+  createFile(file: CreateFile): Promise<{ status: string; token: string }>
+
+  // 分片上传请求
+  uploadChunk(chunk: UploadChunk): Promise<{ status: string }>
+
+  // 文件合并请求，返回文件url
+  mergeFile(
+    token: string,
+    hash: string
+  ): Promise<{
+    status: string
+    url: string
+  }>
+
+  // hash校验请求
+  patchHash<T extends 'file' | 'chunk'>(
+    token: string,
+    hash: string,
+    type: T
+  ): Promise<
+    T extends 'chunk'
+      ? { status: string; hasFile: boolean }
+      : { status: string; hasFile: boolean; url: string }
+  >
+}
+```
+
+## 自定义请求策略
+
+比如基于 axios 实现自定义的请求策略：
 
 ```TypeScript
 import axios from 'axios'
@@ -70,7 +106,9 @@ export class AxiosRequestStrategy implements RequestStrategy {
 }
 
 ```
+
 使用该策略：
+
 ```TypeScript
 import { WfUpload } from '@wf-upload/core'
 import { AxiosRequestStrategy } from './utils/request'
@@ -78,4 +116,3 @@ import { AxiosRequestStrategy } from './utils/request'
 let uc: WfUpload | null = null
 uc = new WfUpload(file, new AxiosRequestStrategy('/file'))
 ```
-

@@ -35,14 +35,14 @@ export default defineConfig({
           text: '自定义',
           items: [
             { text: '请求策略', link: '/docs/custom/request' },
-            { text: '分片策略', link: '/docs/custom/spitor' },
+            // { text: '分片策略', link: '/docs/custom/spitor' },
           ],
         },
       ],
       '/solution/': [
         { text: '总体实现思路', link: '/solution/ideas' },
-        { text: '如何减少页面堵塞?', link: '/solution/pageJam' },
-        { text: '通讯协议', link: '/solution/request' },
+        // { text: '如何减少页面堵塞?', link: '/solution/pageJam' },
+        // { text: '通讯协议', link: '/solution/request' },
       ],
     },
 
