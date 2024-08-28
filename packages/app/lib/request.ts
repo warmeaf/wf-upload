@@ -55,7 +55,9 @@ export class WfUpload extends EventEmitter<'end' | 'error' | 'progress'> {
 
   private handleChunks(chunks: Chunk[]) {
     chunks.forEach((chunk) => {
-      this.taskQueue.addAndStart(new Task(this.uploadChunk.bind(this), chunk))
+      this.taskQueue.addAndStart(
+        new Task(this.uploadChunk.bind(this), 0, chunk)
+      )
     })
   }
 
