@@ -15,12 +15,11 @@ export abstract class SplitTemplate extends EventEmitter<ChunkSplitorEvents> {
     super()
     this.file = file
     this.chunkSize = chunkSize
-    // 获取分片数组
+    // 计算分片数量
     const chunkCount = Math.ceil(this.file.size / this.chunkSize)
     this.chunks = new Array(chunkCount)
       .fill(0)
       .map((_, index) => createChunk(this.file, index, this.chunkSize))
-    console.log('分片完成', new Date().getTime())
   }
 
   /**
