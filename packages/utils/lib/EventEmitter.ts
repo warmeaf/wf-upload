@@ -29,6 +29,16 @@ export class EventEmitter<T extends string> {
   }
 
   /**
+   * 移除指定事件的所有监听器
+   * @param event - 要移除所有监听器的事件类型
+   */
+  removeAllListeners(event: T) {
+    if (this.events.has(event)) {
+      this.events.delete(event)
+    }
+  }
+
+  /**
    * 注册一个一次性事件监听器，在触发一次后自动移除
    * @param event - 要监听的事件类型
    * @param listener - 当事件发生时要执行的函数

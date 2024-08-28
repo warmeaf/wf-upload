@@ -1,3 +1,5 @@
-import { UploadController } from "./request";
+import { WfUpload } from './request'
+import type { Chunk, RequestStrategy, CreateFile, UploadChunk } from './type'
 
-export { UploadController };
+export { WfUpload }
+export type { RequestStrategy, Chunk, CreateFile, UploadChunk }

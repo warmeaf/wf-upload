@@ -1,26 +1,85 @@
 <script setup lang="ts">
-import { ref } from "vue";
-import { UploadController } from "@wf-upload/core";
+import { ref } from 'vue'
+import { WfUpload } from '@wf-upload/core'
+import { AxiosRequestStrategy } from './utils/request'
 
-const file = ref<null | File>(null);
+let uc: WfUpload | null = null
+const file = ref<null | File>(null)
+const progress = ref<number>(0)
+const downloadList = ref([
+  {
+    href: 'http://127.0.0.1:3000/file/%E8%BD%AC%E6%AD%A3%E8%BF%B0%E8%81%8C%E6%B1%AA%E5%9B%BD%E8%BE%89_f1aed9fa8b6a5c72.pptx',
+    fileName: '转正述职汪国辉_f1aed9fa8b6a5c72.pptx',
+    fileSize: '3.11',
+  },
+  {
+    href: 'http://127.0.0.1:3000/file/05-%E5%89%8D%E7%AB%AF%E5%AD%A6%E4%B9%A0%E6%96%B9%E5%90%91_0f55b468b99b740d.mp4',
+    fileName: '05-前端学习方向_0f55b468b99b740d.mp4',
+    fileSize: '55.8',
+  },
+  {
+    href: 'http://127.0.0.1:3000/file/fcd4b5918cea9a220c0da171bb60c214_f059fd3eb749b91b.bin',
+    fileName: 'fcd4b5918cea9a220c0da171bb60c214_f059fd3eb749b91b.bin',
+    fileSize: '1341.44',
+  },
+])
+
 const handleFileChange = (e: Event) => {
-  const target = e.target as HTMLInputElement;
+  const target = e.target as HTMLInputElement
   // 获取到 File 对象
   if (target.files && target.files.length > 0) {
-    file.value = target.files[0];
-    console.log(file.value);
-    handleUpload(file.value);
+    file.value = target.files[0]
+    console.log(file.value)
+    handleUpload(file.value)
   }
-};
+}
 
 const handleUpload = (file: File) => {
-  const uc = new UploadController(file);
+  uc = new WfUpload(file, new AxiosRequestStrategy('/file'))
+  uc.on('error', (e: any) => {
+    console.log(e.message)
+  })
+  uc.on('progress', (uploadedSize: number, totalSize: number) => {
+    console.log(uploadedSize, totalSize)
+    progress.value = Math.floor((uploadedSize / totalSize) * 100)
+  })
+  uc.on('end', (res: any) => {
+    console.log('整个文件已经上传', res)
+  })
   uc.start()
-};
+}
+const pause = () => {
+  uc && uc.pause()
+}
+const resume = () => {
+  uc && uc.resume()
+}
 </script>
 
 <template>
+  <h3>上传大文件</h3>
   <div>
-    <input type="file" @change="handleFileChange" />
+    <label for="file"
+      >进度{{ progress }}%<input
+        id="file"
+        type="file"
+        @change="handleFileChange"
+    /></label>
+  </div>
+  <div>
+    <progress max="100" :value="progress" />
+  </div>
+  <div>
+    <button @click="pause">暂停</button>
+    <button @click="resume">启动</button>
+  </div>
+
+  <h3>下载大文件</h3>
+
+  <div v-for="(item, index) in downloadList" :key="index">
+    <a :href="item.href" title="Download file" download>
+      {{ item.fileName
+      }}<span style="padding: 0 0 0 20px">{{ item.fileSize }}M</span></a
+    >
   </div>
 </template>

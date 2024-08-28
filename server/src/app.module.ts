@@ -1,10 +1,18 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import { MongooseModule } from '@nestjs/mongoose';
+import { ConfigModule } from '@nestjs/config';
+import { FileModule } from './file/file.module';
 
 @Module({
-  imports: [],
-  controllers: [AppController],
-  providers: [AppService],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true, // 让 ConfigModule 成为全局模块
+      envFilePath: `.env.${process.env.NODE_ENV || 'development'}`, // 根据 NODE_ENV 加载对应的 .env 文件
+    }),
+    MongooseModule.forRoot('mongodb://localhost:27017/wf-upload'),
+    FileModule,
+  ],
+  controllers: [],
+  providers: [],
 })
 export class AppModule {}
