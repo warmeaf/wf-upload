@@ -1,7 +1,13 @@
 import SparkMD5 from 'spark-md5'
 import type { Chunk } from './type'
 
-// 创建一个不带hash的chunk
+/**
+ * 创建文件的一个分块
+ * @param {File} file - 要分块的文件对象
+ * @param {number} index - 当前分块的索引
+ * @param {number} chunkSize - 每个分块的大小（字节）
+ * @returns {Chunk} 包含分块信息的对象
+ */
 export function createChunk(
   file: File,
   index: number,
@@ -19,7 +25,11 @@ export function createChunk(
   }
 }
 
-// 计算chunk的hash值
+/**
+ * 异步计算给定分块的哈希值。
+ * @param {Chunk} chunk - 包含要计算哈希值的 blob 的分块对象。
+ * @returns {Promise<string>} 一个 Promise，解析为计算出的哈希值。
+ */
 export function calcChunkHash(chunk: Chunk): Promise<string> {
   // 函数定义：接受一个Chunk类型的参数，返回一个Promise<string>
 
