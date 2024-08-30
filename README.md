@@ -44,6 +44,12 @@ $ pnpm server:dev
 $ pnpm dev
 ```
 
+#### 启动文档服务
+
+```bash
+$ pnpm docs:dev
+```
+
 #### 单元测试
 
 ```bash
