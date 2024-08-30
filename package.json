@@ -3,17 +3,21 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "workspaces": [
-    "packages/*",
-    "server",
-    "examples",
-    "docs"
-  ],
   "scripts": {
     "dev": "pnpm --filter wf-upload-examples run dev",
     "server:dev": "pnpm --filter wf-upload-server run start:dev",
     "docs:dev": "pnpm --filter wf-upload-docs run docs:dev",
     "docs:build": "pnpm --filter wf-upload-docs run docs:build",
-    "docs:preview": "pnpm --filter wf-upload-docs run docs:preview"
+    "docs:preview": "pnpm --filter wf-upload-docs run docs:preview",
+    "test": "vitest"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.0",
+    "vitest": "^2.0.5"
+  },
+  "volta": {
+    "node": "20.9.0",
+    "npm": "10.1.0",
+    "pnpm": "9.9.0"
   }
 }

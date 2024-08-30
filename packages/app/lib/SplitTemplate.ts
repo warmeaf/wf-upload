@@ -4,10 +4,10 @@ import { createChunk } from './chunk'
 import type { Chunk, ChunkSplitorEvents } from './type'
 
 export abstract class SplitTemplate extends EventEmitter<ChunkSplitorEvents> {
-  protected chunkSize: number // 分片大小（单位字节）
-  protected file: File // 待分片的文件
-  protected hash?: string // 整个文件的hash
-  protected chunks: Chunk[] // 分片列表
+  private chunkSize: number // 分片大小（单位字节）
+  private file: File // 待分片的文件
+  private hash?: string // 整个文件的hash
+  private chunks: Chunk[] // 分片列表
   private handleChunkCount = 0 // 已计算hash的分片数量
   private spark = new SparkMD5() // 计算hash的工具
   private hasSplited = false // 是否已经分片
@@ -32,18 +32,18 @@ export abstract class SplitTemplate extends EventEmitter<ChunkSplitorEvents> {
     }
     this.hasSplited = true
     const emitter = new EventEmitter<'chunks'>()
-    const processedChunks: { [index: number]: Chunk } = {}
+    const processedChunks = new Map<number, Chunk>()
     let nextChunkToProcess = 0
 
     const chunksHandler = (chunks: Chunk[]) => {
       this.emit('chunks', chunks)
       chunks.forEach((chunk) => {
-        processedChunks[chunk.index] = chunk
+        processedChunks.set(chunk.index, chunk)
       })
-      while (processedChunks[nextChunkToProcess]) {
-        const chunk = processedChunks[nextChunkToProcess]
+      while (processedChunks.has(nextChunkToProcess)) {
+        const chunk = processedChunks.get(nextChunkToProcess)!
         this.spark.append(chunk.hash)
-        delete processedChunks[nextChunkToProcess]
+        processedChunks.delete(nextChunkToProcess)
         nextChunkToProcess++
       }
       this.handleChunkCount += chunks.length
@@ -64,6 +64,10 @@ export abstract class SplitTemplate extends EventEmitter<ChunkSplitorEvents> {
 
   clear() {
     this.chunks = []
+    this.handleChunkCount = 0
+    this.hash = undefined
+    this.hasSplited = false
+    this.spark.reset()
   }
 
   get chunksLength() {
@@ -76,7 +80,9 @@ export abstract class SplitTemplate extends EventEmitter<ChunkSplitorEvents> {
   // 分片完成后一些需要销毁的工作
   abstract dispose(): void
 
+  // 暂停
   abstract pause(): void
 
+  // 恢复
   abstract resume(emitter: EventEmitter<'chunks'>): void
 }
