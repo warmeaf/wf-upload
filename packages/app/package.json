@@ -9,10 +9,6 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "dependencies": {
-    "spark-md5": "^3.0.2",
-    "@wf-upload/utils": "workspace:*"
-  },
   "devDependencies": {
     "@types/spark-md5": "^3.0.4",
     "typescript": "^5.5.3"
