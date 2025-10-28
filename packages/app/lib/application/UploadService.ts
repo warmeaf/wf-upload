@@ -117,6 +117,11 @@ export class UploadService implements UploadServiceInterface, TaskExecutor {
     this.setupEventListeners()
   }
 
+  // 允许在外部初始化后再注入调度器
+  setUploadScheduler(uploadScheduler: UploadSchedulerInterface): void {
+    this.uploadScheduler = uploadScheduler
+  }
+
   async startUpload(file: File, options: UploadServiceOptions = {}): Promise<UploadSession> {
     try {
       // 1. 文件预处理和验证
@@ -157,6 +162,11 @@ export class UploadService implements UploadServiceInterface, TaskExecutor {
         token: createFileResult.token,
         tempHash
       })
+
+      // 根据配置设置并发数（如果提供）
+      if (typeof options.concurrency === 'number' && this.uploadScheduler && (this.uploadScheduler as any).setConcurrency) {
+        this.uploadScheduler.setConcurrency(options.concurrency!)
+      }
 
       // 7. 立即开始分片上传（不等待整体hash）
       this.uploadScheduler.scheduleUpload(chunks)
@@ -375,7 +385,7 @@ export class UploadService implements UploadServiceInterface, TaskExecutor {
     
     // 上传分片
     const uploadResult = await this.networkAdapter.uploadChunk({
-      url: `${sessionState.options.baseURL || '/api'}/file/uploadChunk`,
+      url: `${sessionState.options.baseURL || ''}/file/uploadChunk`,
       file: chunkBlob,
       token,
       hash: (await this.chunkManager.getChunkInfo(task.chunkId))!.hash,
@@ -412,14 +422,17 @@ export class UploadService implements UploadServiceInterface, TaskExecutor {
 
   private async checkSecondUploadByHash(hash: string, size: number, sessionId: string): Promise<UploadResult | null> {
     try {
+      const sessionState = this.stateManager.getState(`session:${sessionId}`) as any
+      const baseURL = sessionState?.options?.baseURL || ''
+
       // 检查服务器是否已有此文件
       const checkResult = await this.networkAdapter.request({
-        url: '/api/file/check',
+        url: `${baseURL}/file/patchHash`,
         method: 'POST',
-        body: { hash, size }
+        body: { token: sessionState?.token, hash, type: 'file' }
       }) as any
 
-      if (checkResult.exists) {
+      if (checkResult?.status === 'ok' && checkResult.hasFile) {
         return {
           sessionId,
           fileId: `file_${sessionId}`,
@@ -441,18 +454,11 @@ export class UploadService implements UploadServiceInterface, TaskExecutor {
 
   private async updateFileHashOnServer(sessionId: string, hash: string): Promise<void> {
     try {
+      // 服务器在合并时更新 hash，这里仅做事件通知与状态维护
       const sessionState = this.stateManager.getState(`session:${sessionId}`) as any
-      if (!sessionState?.token) {
-        throw new Error(`Session ${sessionId} token not found`)
-      }
-
-      await this.networkAdapter.request({
-        url: '/api/file/updateHash',
-        method: 'POST',
-        body: {
-          token: sessionState.token,
-          hash
-        }
+      this.stateManager.setState(`session:${sessionId}`, {
+        ...sessionState,
+        fileHash: hash
       })
 
       this.eventBus.emit('upload:hash:updated', {
@@ -469,8 +475,10 @@ export class UploadService implements UploadServiceInterface, TaskExecutor {
   }
 
   private async createFileOnServer(_session: UploadSession, processedFile: any, fileHash: string, chunkCount: number): Promise<{ token: string }> {
+    const sessionState = this.stateManager.getState(`session:${_session.id}`) as any
+    const baseURL = sessionState?.options?.baseURL || ''
     const result = await this.networkAdapter.request({
-      url: '/api/file/create',
+      url: `${baseURL}/file/create`,
       method: 'POST',
       body: {
         name: processedFile.metadata.name,
@@ -491,8 +499,9 @@ export class UploadService implements UploadServiceInterface, TaskExecutor {
     }
 
     try {
+      const baseURL = sessionState?.options?.baseURL || ''
       const mergeResult = await this.networkAdapter.request({
-        url: '/api/file/merge',
+        url: `${baseURL}/file/merge`,
         method: 'POST',
         body: {
           token: sessionState.token,

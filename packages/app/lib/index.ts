@@ -96,6 +96,11 @@ export class WfUpload {
     const timerService = new TimerService();
     const workerAdapter = new WorkerAdapter();
     const networkAdapter = new NetworkAdapter();
+    // 应用网络默认配置（超时、请求头）
+    networkAdapter.setDefaultConfig({
+      timeout: this.options.timeout,
+      headers: this.options.headers
+    })
 
     // 创建存储库
     const storageAdapter = new LocalStorageAdapter();
@@ -132,11 +137,16 @@ export class WfUpload {
     const uploadScheduler = UploadSchedulerFactory.create(
       this.uploadService,
       eventBus,
-      timerService
+      timerService,
+      {
+        maxConcurrency: this.options.concurrency!,
+        retryDelay: this.options.retryDelay!,
+        maxRetries: this.options.retryCount!
+      }
     );
 
     // 设置上传调度器
-    (this.uploadService as any).setUploadScheduler(uploadScheduler);
+    this.uploadService.setUploadScheduler(uploadScheduler);
 
     // 保存服务引用
     this.progressService = progressService;
