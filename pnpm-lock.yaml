@@ -47,23 +47,10 @@ importers:
         version: 2.2.12(typescript@5.9.3)
 
   packages/app:
-    dependencies:
-      '@wf-upload/utils':
-        specifier: workspace:*
-        version: link:../utils
-      spark-md5:
-        specifier: ^3.0.2
-        version: 3.0.2
     devDependencies:
       '@types/spark-md5':
         specifier: ^3.0.4
         version: 3.0.5
-      typescript:
-        specifier: ^5.5.3
-        version: 5.9.3
-
-  packages/utils:
-    devDependencies:
       typescript:
         specifier: ^5.5.3
         version: 5.9.3
@@ -6458,10 +6445,6 @@ packages:
   /space-separated-tokens@2.0.2:
     resolution: {integrity: sha512-PEGlAwrG8yXGXRjW32fGbg66JAlOAwbObuqVoJpv/mRgoWDQfgH1wDPvtzWyUSNAXBGSk8h755YDbbcEy3SH2Q==}
     dev: true
-
-  /spark-md5@3.0.2:
-    resolution: {integrity: sha512-wcFzz9cDfbuqe0FZzfi2or1sgyIrsDwmPwfZC4hiNidPdPINjeUwNfv5kldczoEAcjl9Y1L3SM7Uz2PUEQzxQw==}
-    dev: false
 
   /sparse-bitfield@3.0.3:
     resolution: {integrity: sha512-kvzhi7vqKTfkh0PZU+2D2PIllw2ymqJKujUcyPMd9Y75Nv4nPbGJZXNhxsgdQab2BmlDct1YnfQCguEvHr7VsQ==}
