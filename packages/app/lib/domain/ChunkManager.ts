@@ -25,8 +25,6 @@ export interface ChunkCreationOptions {
   chunkSize: number
   enableHash: boolean
   hashAlgorithm: 'md5' | 'sha1' | 'sha256'
-  enableCompression: boolean
-  compressionLevel: number
 }
 
 export interface ChunkProgress {
@@ -90,8 +88,7 @@ export class ChunkManager implements ChunkManagerInterface {
     chunkSize: 5 * 1024 * 1024, // 5MB
     enableHash: true,
     hashAlgorithm: 'md5',
-    enableCompression: false,
-    compressionLevel: 6
+    
   }
 
   constructor(
