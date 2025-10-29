@@ -73,6 +73,8 @@ export interface UploadSchedulerInterface {
   setConcurrency(concurrency: number): void
   // 设置任务优先级
   setPriority(taskId: string, priority: number): void
+  // 设置执行器（用于延迟注入/替换执行器）
+  setExecutor(executor: TaskExecutor): void
   // 暂停调度器
   pause(): void
   // 恢复调度器
@@ -87,6 +89,8 @@ export interface UploadSchedulerInterface {
   getTask(taskId: string): UploadTask | undefined
   // 获取会话任务
   getSessionTasks(sessionId: string): UploadTask[]
+  // 判断是否存在指定会话+分片的任务（用于执行器 canExecute）
+  hasTask(sessionId: string, chunkId: string): boolean
 }
 
 export class UploadScheduler implements UploadSchedulerInterface {
@@ -133,6 +137,10 @@ export class UploadScheduler implements UploadSchedulerInterface {
 
     this.startScheduler()
     this.startHealthCheck()
+  }
+
+  setExecutor(executor: TaskExecutor): void {
+    this.executor = executor
   }
 
   scheduleUpload(chunks: ChunkEntity[]): void {
@@ -314,6 +322,21 @@ export class UploadScheduler implements UploadSchedulerInterface {
   getSessionTasks(sessionId: string): UploadTask[] {
     return Array.from(this.tasks.values())
       .filter(task => task.sessionId === sessionId)
+  }
+
+  hasTask(sessionId: string, chunkId: string): boolean {
+    for (const task of this.tasks.values()) {
+      if (
+        task.sessionId === sessionId &&
+        task.chunkId === chunkId &&
+        task.status !== TaskStatus.CANCELLED &&
+        task.status !== TaskStatus.COMPLETED &&
+        task.status !== TaskStatus.FAILED
+      ) {
+        return true
+      }
+    }
+    return false
   }
 
   // 获取推荐的并发数

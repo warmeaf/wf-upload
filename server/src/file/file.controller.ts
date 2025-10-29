@@ -9,6 +9,9 @@ import {
   UseInterceptors,
   UploadedFile,
   Req,
+  Logger,
+  HttpStatus,
+  HttpException,
 } from '@nestjs/common';
 import { Express, Response, Request } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -23,6 +26,8 @@ import {
 
 @Controller('file')
 export class FileController {
+  private readonly logger = new Logger(FileController.name);
+
   constructor(private readonly fileService: FileService) {}
 
   @Inject(UniqueCodeService)
@@ -33,56 +38,108 @@ export class FileController {
   async create(@Body() body: CreateFileDto): Promise<{
     status: string;
     token: string;
+    message?: string;
   }> {
-    const token = this.uniqueCodeService.generateUniqueCode();
-    if (!token) {
-      return {
-        status: 'error',
-        token: '',
-      };
-    }
-    const { name, size, type, chunksLength, hash } = body;
+    const startTime = Date.now();
+    try {
+      const token = this.uniqueCodeService.generateUniqueCode();
+      if (!token) {
+        this.logger.error('Failed to generate unique token');
+        throw new HttpException(
+          'Failed to generate token',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
 
-    await this.fileService.createFile(
-      token,
-      name,
-      size,
-      type,
-      chunksLength,
-      hash || '',
-    );
-    return {
-      status: 'ok',
-      token,
-    };
+      const { name, size, type, chunksLength, hash } = body;
+
+      await this.fileService.createFile(
+        token,
+        name,
+        size,
+        type,
+        chunksLength,
+        hash || '',
+      );
+
+      const duration = Date.now() - startTime;
+      this.logger.log(
+        `File created: name=${name}, size=${size}, chunks=${chunksLength}, token=${token}, duration: ${duration}ms`,
+      );
+
+      return {
+        status: 'ok',
+        token,
+      };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error(
+        `Failed to create file: name=${body.name}, duration: ${duration}ms`,
+        error,
+      );
+      throw error;
+    }
   }
 
   // hash 校验
   @Post('patchHash')
   async patchHash(@Body() body: PatchHashDto): Promise<any> {
-    const { token, hash, type } = body;
-    const valid = this.uniqueCodeService.verifyUniqueCode(token);
-    if (!valid) {
+    const startTime = Date.now();
+    try {
+      const { token, hash, type } = body;
+
+      const valid = this.uniqueCodeService.verifyUniqueCode(token);
+      if (!valid) {
+        this.logger.warn(`Invalid token for patchHash: ${token}`);
+        return {
+          status: 'error',
+          message: 'Invalid token',
+        };
+      }
+
+      if (type === 'chunk') {
+        const exists = await this.fileService.checkChunkExists(hash);
+        const duration = Date.now() - startTime;
+        this.logger.log(
+          `Chunk hash check: hash=${hash}, exists=${exists}, duration: ${duration}ms`,
+        );
+
+        return { status: 'ok', hasFile: exists };
+      } else if (type === 'file') {
+        let url = '';
+        const isHasFile = await this.fileService.checkFileExists(hash);
+        if (isHasFile) {
+          await this.fileService.deleteFileByToken(token);
+          const file = await this.fileService.getFileByHash(hash);
+          url = file.url;
+        }
+
+        const duration = Date.now() - startTime;
+        this.logger.log(
+          `File hash check: hash=${hash}, exists=${isHasFile}, url=${url}, duration: ${duration}ms`,
+        );
+
+        return {
+          status: 'ok',
+          hasFile: isHasFile,
+          url,
+        };
+      } else {
+        this.logger.warn(`Invalid type for patchHash: ${type}`);
+        return {
+          status: 'error',
+          message: 'Invalid type',
+        };
+      }
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error(
+        `Failed to check hash: hash=${body.hash}, type=${body.type}, duration: ${duration}ms`,
+        error,
+      );
       return {
         status: 'error',
-      };
-    }
-
-    if (type === 'chunk') {
-      const exists = await this.fileService.checkChunkExists(hash);
-      return { status: 'ok', hasFile: exists };
-    } else if (type === 'file') {
-      let url = '';
-      const isHasFile = await this.fileService.checkFileExists(hash);
-      if (isHasFile) {
-        await this.fileService.deleteFileByToken(token);
-        const file = await this.fileService.getFileByHash(hash);
-        url = file.url;
-      }
-      return {
-        status: 'ok',
-        hasFile: isHasFile,
-        url,
+        message: 'Hash check failed',
       };
     }
   }
@@ -95,15 +152,44 @@ export class FileController {
     @Body() chunk: UploadChunkDto,
     @UploadedFile() blob: Express.Multer.File,
   ): Promise<any> {
-    await this.fileService.saveChunk(blob.buffer, chunk.hash);
-    await this.fileService.addChunkToFile(
-      chunk.token,
-      chunk.hash,
-      Number(chunk.index),
-    );
-    return response.status(200).json({
-      status: 'ok',
-    });
+    const startTime = Date.now();
+    try {
+      if (!blob || !blob.buffer) {
+        this.logger.error(
+          `No blob provided for chunk upload: token=${chunk.token}, hash=${chunk.hash}`,
+        );
+        return response.status(400).json({
+          status: 'error',
+          message: 'No file data provided',
+        });
+      }
+
+      await this.fileService.saveChunk(blob.buffer, chunk.hash);
+      await this.fileService.addChunkToFile(
+        chunk.token,
+        chunk.hash,
+        Number(chunk.index),
+      );
+
+      const duration = Date.now() - startTime;
+      this.logger.log(
+        `Chunk uploaded: token=${chunk.token}, hash=${chunk.hash}, index=${chunk.index}, size=${blob.buffer.length}, duration: ${duration}ms`,
+      );
+
+      return response.status(200).json({
+        status: 'ok',
+      });
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error(
+        `Failed to upload chunk: token=${chunk.token}, hash=${chunk.hash}, duration: ${duration}ms`,
+        error,
+      );
+      return response.status(500).json({
+        status: 'error',
+        message: 'Chunk upload failed',
+      });
+    }
   }
 
   // 合并文件
@@ -111,29 +197,60 @@ export class FileController {
   async mergeFile(@Body() body: MergeFileDto): Promise<{
     status: string;
     url: string;
+    message?: string;
   }> {
-    const { token, hash } = body;
-    let url = '';
+    const startTime = Date.now();
+    try {
+      const { token, hash } = body;
+      let url = '';
 
-    await this.fileService.updateFileHash(token, hash);
-    const valid = await this.fileService.isFileComplete(hash);
-    if (valid) {
-      await this.fileService.generateAndSetFileUrl(hash);
-      const file = await this.fileService.getFileByHash(hash);
-      url = file.url;
+      this.logger.log(`File merge started: token=${token}, hash=${hash}`);
+
+      await this.fileService.updateFileHash(token, hash);
+      const valid = await this.fileService.isFileComplete(hash);
+
+      if (valid) {
+        await this.fileService.generateAndSetFileUrl(hash);
+        const file = await this.fileService.getFileByHash(hash);
+        url = file.url;
+
+        const duration = Date.now() - startTime;
+        this.logger.log(
+          `File merged successfully: hash=${hash}, url=${url}, duration: ${duration}ms`,
+        );
+
+        return {
+          status: 'ok',
+          url,
+        };
+      } else {
+        // 表示这个文件上传之前中断过（比如上传过程中页面被刷新了）
+        // 根据 index 检查缺失部分的 hash，把缺失部分的 hash 补回来
+        await this.fileService.addMissingChunks(hash);
+        const file = await this.fileService.getFileByHash(hash);
+        url = file.url;
+
+        const duration = Date.now() - startTime;
+        this.logger.log(
+          `File merge completed with missing chunks: hash=${hash}, url=${url}, duration: ${duration}ms`,
+        );
+
+        return {
+          status: 'ok',
+          url,
+          message: 'Completed with missing chunks added',
+        };
+      }
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error(
+        `Failed to merge file: token=${body.token}, hash=${body.hash}, duration: ${duration}ms`,
+        error,
+      );
       return {
-        status: 'ok',
-        url,
-      };
-    } else {
-      // 表示这个文件上传之前中断过（比如上传过程中页面被刷新了）
-      // 根据 index 检查缺失部分的 hash，把缺失部分的 hash 补回来
-      await this.fileService.addMissingChunks(hash);
-      const file = await this.fileService.getFileByHash(hash);
-      url = file.url;
-      return {
-        status: 'ok',
-        url,
+        status: 'error',
+        url: '',
+        message: 'File merge failed',
       };
     }
   }

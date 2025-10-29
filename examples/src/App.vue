@@ -71,22 +71,22 @@ const handleUpload = (f: File) => {
   status.value = 'uploading'
   startTime.value = Date.now()
 
-  uc.on('error', (e: any) => {
+  uc.on('upload:error', (e: any) => {
     errorMsg.value = e?.message || '上传失败'
     status.value = 'failed'
   })
 
-  uc.on('progress', (uSize: number, tSize: number) => {
-    uploadedSize.value = uSize
-    totalSize.value = tSize
-    progress.value = Math.floor((uSize / tSize) * 100)
+  uc.on('upload:progress', (progressData: any) => {
+    uploadedSize.value = progressData.uploadedSize
+    totalSize.value = progressData.totalSize
+    progress.value = Math.floor(progressData.percentage)
     const elapsedSec = (Date.now() - startTime.value) / 1000
-    speed.value = elapsedSec > 0 ? uSize / elapsedSec : 0
-    const remainingBytes = Math.max(0, tSize - uSize)
+    speed.value = elapsedSec > 0 ? progressData.uploadedSize / elapsedSec : 0
+    const remainingBytes = Math.max(0, progressData.totalSize - progressData.uploadedSize)
     remainingTime.value = speed.value > 0 ? remainingBytes / speed.value : 0
   })
 
-  uc.on('end', (res: any) => {
+  uc.on('upload:completed', (res: any) => {
     status.value = 'completed'
     // 如果服务端返回了可访问地址，展示给用户
     if (res && res.url) {

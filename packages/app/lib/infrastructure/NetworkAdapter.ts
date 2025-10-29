@@ -167,13 +167,25 @@ export class NetworkAdapter implements NetworkAdapterInterface {
   private async performRequest<T>(config: RequestConfig): Promise<T> {
     const { url, method = 'GET', headers, body, timeout = 30000 } = config
 
+    const normalizedHeaders: Record<string, string> = { ...(headers || {}) }
+    if (body instanceof FormData) {
+      if (normalizedHeaders['Content-Type']) {
+        delete normalizedHeaders['Content-Type']
+      }
+    } else if (body !== undefined) {
+      const ct = normalizedHeaders['Content-Type']
+      if (!ct || ct.toLowerCase().includes('multipart/form-data')) {
+        normalizedHeaders['Content-Type'] = 'application/json'
+      }
+    }
+
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), timeout)
 
     try {
       const fetchOptions: RequestInit = {
         method,
-        headers,
+        headers: normalizedHeaders,
         signal: controller.signal
       }
 
@@ -196,12 +208,14 @@ export class NetworkAdapter implements NetworkAdapterInterface {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
 
-      // 尝试解析 JSON，如果失败则返回文本
-      const contentType = response.headers.get('content-type')
-      if (contentType && contentType.includes('application/json')) {
-        return await response.json()
-      } else {
-        return await response.text() as unknown as T
+      const text = await response.text()
+      if (!text) {
+        return {} as T
+      }
+      try {
+        return JSON.parse(text)
+      } catch (e) {
+        return text as unknown as T
       }
     } catch (error) {
       clearTimeout(timeoutId)
