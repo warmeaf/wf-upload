@@ -1,80 +1,150 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { WfUpload } from '@wf-upload/core'
-import { AxiosRequestStrategy } from './utils/request'
 
 let uc: WfUpload | null = null
 const file = ref<null | File>(null)
 const progress = ref<number>(0)
-const downloadList = ref([
-  {
-    href: 'http://127.0.0.1:3000/file/%E8%BD%AC%E6%AD%A3%E8%BF%B0%E8%81%8C%E6%B1%AA%E5%9B%BD%E8%BE%89_f1aed9fa8b6a5c72.pptx',
-    fileName: '转正述职汪国辉_f1aed9fa8b6a5c72.pptx',
-    fileSize: '3.11',
-  },
-  {
-    href: 'http://127.0.0.1:3000/file/fcd4b5918cea9a220c0da171bb60c214_f059fd3eb749b91b.bin',
-    fileName: 'fcd4b5918cea9a220c0da171bb60c214_f059fd3eb749b91b.bin',
-    fileSize: '1341.44',
-  },
-])
+const status = ref<'idle' | 'uploading' | 'paused' | 'completed' | 'failed'>(
+  'idle'
+)
+const errorMsg = ref<string>('')
+const uploadedSize = ref<number>(0)
+const totalSize = ref<number>(0)
+const startTime = ref<number>(0)
+const speed = ref<number>(0) // bytes/sec
+const remainingTime = ref<number>(0) // sec
+const resultUrl = ref<string>('')
+
+const humanSpeed = computed(() => {
+  const s = speed.value
+  if (s <= 0) return '0 B/s'
+  const units = ['B/s', 'KB/s', 'MB/s', 'GB/s']
+  let idx = 0
+  let val = s
+  while (val >= 1024 && idx < units.length - 1) {
+    val /= 1024
+    idx++
+  }
+  return `${val.toFixed(2)} ${units[idx]}`
+})
+
+const humanSize = (bytes: number) => {
+  if (!bytes && bytes !== 0) return '-'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let val = bytes
+  let idx = 0
+  while (val >= 1024 && idx < units.length - 1) {
+    val /= 1024
+    idx++
+  }
+  return `${val.toFixed(2)} ${units[idx]}`
+}
 
 const handleFileChange = (e: Event) => {
   const target = e.target as HTMLInputElement
-  // 获取到 File 对象
   if (target.files && target.files.length > 0) {
     file.value = target.files[0]
-    console.log(file.value)
+    // 重置状态
+    progress.value = 0
+    status.value = 'idle'
+    errorMsg.value = ''
+    uploadedSize.value = 0
+    totalSize.value = file.value.size
+    speed.value = 0
+    remainingTime.value = 0
+    resultUrl.value = ''
     handleUpload(file.value)
   }
 }
 
-const handleUpload = (file: File) => {
-  uc = new WfUpload(file, new AxiosRequestStrategy('/file'))
+const handleUpload = (f: File) => {
+  // 如果已有上传实例，优先暂停以避免并发冲突
+  if (uc) {
+    try {
+      uc.pause()
+    } catch {}
+    uc = null
+  }
+
+  uc = new WfUpload(f)
+  status.value = 'uploading'
+  startTime.value = Date.now()
+
   uc.on('error', (e: any) => {
-    console.log(e.message)
+    errorMsg.value = e?.message || '上传失败'
+    status.value = 'failed'
   })
-  uc.on('progress', (uploadedSize: number, totalSize: number) => {
-    console.log(uploadedSize, totalSize)
-    progress.value = Math.floor((uploadedSize / totalSize) * 100)
+
+  uc.on('progress', (uSize: number, tSize: number) => {
+    uploadedSize.value = uSize
+    totalSize.value = tSize
+    progress.value = Math.floor((uSize / tSize) * 100)
+    const elapsedSec = (Date.now() - startTime.value) / 1000
+    speed.value = elapsedSec > 0 ? uSize / elapsedSec : 0
+    const remainingBytes = Math.max(0, tSize - uSize)
+    remainingTime.value = speed.value > 0 ? remainingBytes / speed.value : 0
   })
+
   uc.on('end', (res: any) => {
-    console.log('整个文件已经上传', res)
+    status.value = 'completed'
+    // 如果服务端返回了可访问地址，展示给用户
+    if (res && res.url) {
+      resultUrl.value = res.url
+    }
   })
+
   uc.start()
 }
+
 const pause = () => {
-  uc && uc.pause()
+  if (uc && status.value === 'uploading') {
+    uc.pause()
+    status.value = 'paused'
+  }
 }
+
 const resume = () => {
-  uc && uc.resume()
+  if (uc && status.value === 'paused') {
+    uc.resume()
+    status.value = 'uploading'
+    // 重新校准开始时间以避免速度估算过慢
+    startTime.value =
+      Date.now() - (uploadedSize.value / (speed.value || 1)) * 1000
+  }
 }
 </script>
 
 <template>
   <h3>上传大文件</h3>
-  <div>
-    <label for="file"
-      >进度{{ progress }}%<input
-        id="file"
-        type="file"
-        @change="handleFileChange"
-    /></label>
-  </div>
-  <div>
-    <progress max="100" :value="progress" />
-  </div>
-  <div>
-    <button @click="pause">暂停</button>
-    <button @click="resume">启动</button>
+  <div style="margin-bottom: 12px">
+    <label for="file">
+      选择文件
+      <input id="file" type="file" @change="handleFileChange" />
+    </label>
   </div>
 
-  <h3>下载大文件</h3>
+  <div v-if="file" style="margin-bottom: 8px">
+    <div>文件名：{{ file!.name }}</div>
+    <div>文件大小：{{ humanSize(totalSize) }}</div>
+    <div>状态：{{ status }}</div>
+    <div v-if="errorMsg" style="color: #d33">错误：{{ errorMsg }}</div>
+  </div>
 
-  <div v-for="(item, index) in downloadList" :key="index">
-    <a :href="item.href" title="Download file" download>
-      {{ item.fileName
-      }}<span style="padding: 0 0 0 20px">{{ item.fileSize }}M</span></a
-    >
+  <div style="margin: 10px 0">
+    <progress max="100" :value="progress" style="width: 100%" />
+    <div>进度：{{ progress }}%</div>
+    <div>
+      速度：{{ humanSpeed }}，剩余时间：{{ Math.ceil(remainingTime) }} 秒
+    </div>
+  </div>
+
+  <div>
+    <button @click="pause" :disabled="status !== 'uploading'">暂停</button>
+    <button @click="resume" :disabled="status !== 'paused'">恢复</button>
+  </div>
+
+  <div v-if="resultUrl" style="margin-top: 12px">
+    <a :href="resultUrl" target="_blank">上传完成，打开文件</a>
   </div>
 </template>

@@ -55,6 +55,8 @@ export interface ChunkManagerInterface {
   getFailedChunks(sessionId: string): Promise<ChunkEntity[]>
   // 更新分片进度
   updateChunkProgress(chunkId: string, progress: Partial<ChunkProgress>): Promise<void>
+  // 更新分片真实哈希
+  updateChunkHash(chunkId: string, hash: string): Promise<void>
   // 获取上传统计
   getUploadStats(sessionId: string): Promise<UploadStatistics>
   // 清理分片数据
@@ -405,6 +407,21 @@ export class ChunkManager implements ChunkManagerInterface {
     }
 
     return file.slice(chunk.start, chunk.end)
+  }
+
+  // 更新分片哈希（提供外部使用的轻量方法）
+  async updateChunkHash(chunkId: string, hash: string): Promise<void> {
+    const chunk = await this.chunkRepository.findById(chunkId)
+    if (!chunk) {
+      throw new Error(`Chunk ${chunkId} not found`)
+    }
+    await this.chunkRepository.update(chunkId, { hash })
+    this.eventBus.emit('chunk:hash:updated', {
+      chunkId,
+      index: chunk.index,
+      hash,
+      sessionId: chunk.sessionId
+    })
   }
 
   // 验证分片完整性

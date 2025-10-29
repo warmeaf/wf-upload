@@ -154,15 +154,22 @@ export class FileService {
     return updatedFile;
   }
 
-  async getFileStream(url: string): Promise<PassThrough> {
-    // 根据 URL 查找文件，只获取 chunks 字段，并使用 lean() 返回普通 JavaScript 对象
-    const file = await this.fileModel.findOne({ url }, { chunks: 1 }).lean();
+  async getFileStream(
+    url: string,
+    rangeStart?: number,
+    rangeEnd?: number,
+  ): Promise<PassThrough> {
+    // 根据 URL 查找文件，只获取 chunks 与 size 字段，并使用 lean() 返回普通 JavaScript 对象
+    const file = await this.fileModel
+      .findOne({ url }, { chunks: 1, size: 1 })
+      .lean();
     if (!file) {
       // 如果文件不存在，抛出 NotFoundException
       throw new NotFoundException(`File with url ${url} not found`);
     }
     // 获取文件的 chunks 数组
     const fileChunks = file.chunks;
+    const totalSize = file.size;
     // 创建一个 PassThrough 流，用于后续数据传输
     const passThrough = new PassThrough();
 
@@ -172,10 +179,39 @@ export class FileService {
 
     // 定义一个异步生成器函数，用于逐个获取并生成 chunk 数据
     const streamChunks = async function* () {
+      let fileOffset = 0; // 当前分片在文件中的起始偏移量
       for (const chunk of sortedChunks) {
         // 根据 chunk 的 hash 获取对应的 buffer
         const buffer = await this.getChunkBuffer(chunk.hash);
-        yield buffer;
+        const chunkStart = fileOffset;
+        const chunkEnd = fileOffset + buffer.length - 1;
+
+        if (
+          typeof rangeStart === 'number' &&
+          typeof rangeEnd === 'number' &&
+          rangeStart >= 0 &&
+          rangeEnd >= rangeStart &&
+          totalSize > 0
+        ) {
+          // 与请求区间求交集
+          if (chunkEnd < rangeStart) {
+            // 当前分片在请求范围前面，跳过
+            fileOffset += buffer.length;
+            continue;
+          }
+          if (chunkStart > rangeEnd) {
+            // 当前分片在请求范围后面，提前结束
+            break;
+          }
+          const sliceStart = Math.max(0, rangeStart - chunkStart);
+          const sliceEnd = Math.min(buffer.length - 1, rangeEnd - chunkStart);
+          // 仅输出区间内的数据
+          yield buffer.subarray(sliceStart, sliceEnd + 1);
+        } else {
+          // 未指定范围，输出整个分片
+          yield buffer;
+        }
+        fileOffset += buffer.length;
       }
     }.bind(this); // 绑定 this 上下文
 
