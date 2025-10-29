@@ -5,6 +5,7 @@ import {
   Min,
   IsEnum,
   IsNotEmpty,
+  IsOptional,
 } from 'class-validator';
 
 // 自定义装饰器
@@ -29,6 +30,11 @@ export class CreateFileDto {
   @IsInt({ message: '分片数量必须是整数' })
   @Min(1, { message: '分片数量必须大于等于1' })
   chunksLength: number;
+
+  // 前端可能会传入临时 hash，用于快速建立记录
+  @IsOptional()
+  @IsString({ message: '哈希值必须是字符串' })
+  hash?: string;
 }
 
 export class PatchHashDto {

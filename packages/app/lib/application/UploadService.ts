@@ -379,19 +379,68 @@ export class UploadService implements UploadServiceInterface, TaskExecutor {
 
     const file = sessionState.file.file
     const token = sessionState.token
+    const baseURL = sessionState?.options?.baseURL || ''
 
     // 获取分片数据
     const chunkBlob = await this.chunkManager.getChunkBlob(file, task.chunkId)
-    
-    // 上传分片
+    const chunkInfo = await this.chunkManager.getChunkInfo(task.chunkId)
+    if (!chunkInfo) {
+      throw new Error(`Chunk info ${task.chunkId} not found`)
+    }
+
+    let effectiveHash = chunkInfo.hash
+
+    // 如果是临时哈希，计算真实哈希并更新，保证后续秒传检查与上传一致
+    if (effectiveHash.startsWith('temp_')) {
+      try {
+        const realHash = await this.hashCalculator.calculateChunkHash(chunkBlob, 'sha256')
+        effectiveHash = realHash
+        await this.chunkManager.updateChunkHash(task.chunkId, realHash)
+      } catch (e) {
+        // 如果计算失败，不阻塞上传流程，继续使用临时哈希
+        this.eventBus.emit('chunk:hash:calculate:failed', {
+          chunkId: task.chunkId,
+          error: e instanceof Error ? e.message : 'Unknown error'
+        })
+      }
+    }
+
+    // 分片级秒传：在上传前检查服务器是否已有该分片
+    try {
+      const checkResult = await this.networkAdapter.request({
+        url: `${baseURL}/file/patchHash`,
+        method: 'POST',
+        body: { token, hash: effectiveHash, type: 'chunk' }
+      }) as any
+
+      if (checkResult?.status === 'ok' && checkResult.hasFile) {
+        // 服务器已存在该分片，跳过实际上传并标记完成
+        await this.chunkManager.markChunkCompleted(task.chunkId)
+
+        // 检查是否所有分片都已完成，触发合并
+        const stats = await this.chunkManager.getUploadStats(task.sessionId)
+        if (stats.completedChunks === stats.totalChunks) {
+          await this.mergeFile(task.sessionId)
+        }
+        return
+      }
+    } catch (e) {
+      // 检查失败不阻塞上传流程，正常继续上传
+      this.eventBus.emit('chunk:second-upload:check:failed', {
+        chunkId: task.chunkId,
+        error: e instanceof Error ? e.message : 'Second upload check failed'
+      })
+    }
+
+    // 上传分片（使用真实哈希）
     const uploadResult = await this.networkAdapter.uploadChunk({
-      url: `${sessionState.options.baseURL || ''}/file/uploadChunk`,
+      url: `${baseURL}/file/uploadChunk`,
       file: chunkBlob,
       token,
-      hash: (await this.chunkManager.getChunkInfo(task.chunkId))!.hash,
-      start: (await this.chunkManager.getChunkInfo(task.chunkId))!.start,
-      end: (await this.chunkManager.getChunkInfo(task.chunkId))!.end,
-      index: (await this.chunkManager.getChunkInfo(task.chunkId))!.index
+      hash: effectiveHash,
+      start: chunkInfo.start,
+      end: chunkInfo.end,
+      index: chunkInfo.index
     })
 
     if (uploadResult.status === 'ok') {

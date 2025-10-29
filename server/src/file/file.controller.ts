@@ -8,8 +8,9 @@ import {
   Body,
   UseInterceptors,
   UploadedFile,
+  Req,
 } from '@nestjs/common';
-import { Express, Response } from 'express';
+import { Express, Response, Request } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UniqueCodeService } from '../unique-code/unique-code.service';
 import { FileService } from './file.service';
@@ -40,9 +41,16 @@ export class FileController {
         token: '',
       };
     }
-    const { name, size, type, chunksLength } = body;
+    const { name, size, type, chunksLength, hash } = body;
 
-    await this.fileService.createFile(token, name, size, type, chunksLength);
+    await this.fileService.createFile(
+      token,
+      name,
+      size,
+      type,
+      chunksLength,
+      hash || '',
+    );
     return {
       status: 'ok',
       token,
@@ -132,7 +140,12 @@ export class FileController {
 
   // 下载文件
   @Get(':url')
-  async streamFile(@Param('url') url: string, @Res() res: Response) {
+  async streamFile(
+    @Param('url') url: string,
+    @Res() res: Response,
+    // 获取请求对象以读取 Range 头
+    @Req() req: Request,
+  ) {
     url = encodeURIComponent(url);
     const file = await this.fileService.getFileByUrl(decodeURIComponent(url));
     if (!file) {
@@ -142,17 +155,47 @@ export class FileController {
     }
 
     const disp = `attachment; filename*=UTF-8''${url};`;
-    const stream = await this.fileService.getFileStream(
-      decodeURIComponent(url),
-    );
     const len = file.size;
 
-    res.setHeader('Content-Disposition', disp);
-    res.setHeader('Content-Type', 'binary/octet-stream');
-    res.setHeader('content-length', len);
-    res.setHeader('Accept-Ranges', 'bytes');
+    // 解析 Range 请求头以支持断点续传
+    const range = req.headers['range'];
+    if (typeof range === 'string') {
+      const match = /bytes=(\d*)-(\d*)/.exec(range);
+      let start = 0;
+      let end = len - 1;
+      if (match) {
+        if (match[1] !== '') start = Math.max(0, parseInt(match[1], 10));
+        if (match[2] !== '') end = Math.min(len - 1, parseInt(match[2], 10));
+      }
+      if (Number.isNaN(start) || start < 0) start = 0;
+      if (Number.isNaN(end) || end < start) end = len - 1;
 
-    // 将文件流通过管道响应给客户端
-    stream.pipe(res);
+      const stream = await this.fileService.getFileStream(
+        decodeURIComponent(url),
+        start,
+        end,
+      );
+
+      res.status(206);
+      res.setHeader('Content-Disposition', disp);
+      res.setHeader('Content-Type', 'binary/octet-stream');
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${len}`);
+      res.setHeader('Content-Length', end - start + 1);
+      res.setHeader('Accept-Ranges', 'bytes');
+
+      // 将文件流通过管道响应给客户端
+      stream.pipe(res);
+    } else {
+      const stream = await this.fileService.getFileStream(
+        decodeURIComponent(url),
+      );
+      res.setHeader('Content-Disposition', disp);
+      res.setHeader('Content-Type', 'binary/octet-stream');
+      res.setHeader('content-length', len);
+      res.setHeader('Accept-Ranges', 'bytes');
+
+      // 将文件流通过管道响应给客户端
+      stream.pipe(res);
+    }
   }
 }
