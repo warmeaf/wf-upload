@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  Logger,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Readable, PassThrough } from 'stream';
@@ -8,6 +13,8 @@ import { FileChunkDocument } from './schema/fileChunk.dto';
 
 @Injectable()
 export class FileService {
+  private readonly logger = new Logger(FileService.name);
+
   constructor(
     @InjectModel(FileChunkDocument.name)
     private fileChunkModel: Model<FileChunkDocument>,
@@ -41,8 +48,32 @@ export class FileService {
   }
 
   async saveChunk(chunk: Buffer, hash: string): Promise<FileChunkDocument> {
-    const fileChunk = new this.fileChunkModel({ chunk, hash });
-    return fileChunk.save();
+    const startTime = Date.now();
+    try {
+      // 检查分片是否已存在，避免重复存储
+      const existingChunk = await this.fileChunkModel.findOne({ hash }).exec();
+      if (existingChunk) {
+        this.logger.log(`Chunk already exists, skipping save: ${hash}`);
+        return existingChunk;
+      }
+
+      const fileChunk = new this.fileChunkModel({ chunk, hash });
+      const result = await fileChunk.save();
+
+      const duration = Date.now() - startTime;
+      this.logger.log(
+        `Chunk saved successfully: ${hash}, size: ${chunk.length}, duration: ${duration}ms`,
+      );
+
+      return result;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error(
+        `Failed to save chunk: ${hash}, duration: ${duration}ms`,
+        error,
+      );
+      throw new InternalServerErrorException(`Failed to save chunk: ${hash}`);
+    }
   }
 
   async checkChunkExists(hash: string): Promise<boolean> {
@@ -78,18 +109,60 @@ export class FileService {
   }
 
   async isFileComplete(hash: string): Promise<boolean> {
-    const file = await this.findFileByHash(hash);
-    return file.chunksLength === file.chunks.length;
+    const startTime = Date.now();
+    try {
+      const file = await this.findFileByHash(hash);
+
+      if (!file.chunks || file.chunks.length === 0) {
+        this.logger.warn(`File has no chunks: hash=${hash}`);
+        return false;
+      }
+
+      const isComplete = file.chunksLength === file.chunks.length;
+      const duration = Date.now() - startTime;
+
+      this.logger.log(
+        `File completeness check: hash=${hash}, chunks=${file.chunks.length}/${file.chunksLength}, complete=${isComplete}, duration: ${duration}ms`,
+      );
+
+      return isComplete;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error(
+        `Failed to check file completeness: hash=${hash}, duration: ${duration}ms`,
+        error,
+      );
+      return false;
+    }
   }
 
   async generateAndSetFileUrl(hash: string) {
-    const file = await this.findFileByHash(hash);
-    const { fileHash, name } = file;
-    const index = name.lastIndexOf('.');
-    const str = `_${fileHash.slice(0, 16)}`;
-    const url = name.slice(0, index) + str + name.slice(index);
-    file.url = url;
-    return file.save();
+    const startTime = Date.now();
+    try {
+      const file = await this.findFileByHash(hash);
+      const { fileHash, name } = file;
+
+      const index = name.lastIndexOf('.');
+      const str = `_${fileHash.slice(0, 16)}`;
+      const url = name.slice(0, index) + str + name.slice(index);
+
+      file.url = url;
+      const result = await file.save();
+
+      const duration = Date.now() - startTime;
+      this.logger.log(
+        `File URL generated: hash=${hash}, url=${url}, duration: ${duration}ms`,
+      );
+
+      return result;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error(
+        `Failed to generate file URL: hash=${hash}, duration: ${duration}ms`,
+        error,
+      );
+      throw error;
+    }
   }
 
   async addMissingChunks(hash: string): Promise<void> {
@@ -139,19 +212,49 @@ export class FileService {
     hash: string,
     index: number,
   ): Promise<FileDocument> {
-    const updatedFile = await this.fileModel
-      .findOneAndUpdate(
-        { token },
-        { $push: { chunks: { hash, index } } },
-        { new: true },
-      )
-      .exec();
+    const startTime = Date.now();
+    try {
+      // 检查分片是否已经添加到文件中，避免重复
+      const existingFile = await this.fileModel
+        .findOne({
+          token,
+          'chunks.hash': hash,
+        })
+        .exec();
 
-    if (!updatedFile) {
-      throw new NotFoundException(`File with token ${token} not found`);
+      if (existingFile) {
+        this.logger.log(
+          `Chunk already added to file: token=${token}, hash=${hash}`,
+        );
+        return existingFile;
+      }
+
+      const updatedFile = await this.fileModel
+        .findOneAndUpdate(
+          { token },
+          { $push: { chunks: { hash, index, uploadedAt: new Date() } } },
+          { new: true },
+        )
+        .exec();
+
+      if (!updatedFile) {
+        throw new NotFoundException(`File with token ${token} not found`);
+      }
+
+      const duration = Date.now() - startTime;
+      this.logger.log(
+        `Chunk added to file: token=${token}, hash=${hash}, index=${index}, duration: ${duration}ms`,
+      );
+
+      return updatedFile;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error(
+        `Failed to add chunk to file: token=${token}, hash=${hash}, duration: ${duration}ms`,
+        error,
+      );
+      throw error;
     }
-
-    return updatedFile;
   }
 
   async getFileStream(

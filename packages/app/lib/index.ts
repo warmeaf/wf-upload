@@ -5,22 +5,19 @@
 
 // 导入核心服务
 import { UploadService, UploadServiceOptions, UploadProgress, UploadResult, UploadError, UploadStatus } from './application/UploadService'
-import { ProgressService } from './application/ProgressService'
-import { ErrorService } from './application/ErrorService'
+import { RetryService, RetryConfig } from './infrastructure/RetryService'
 
 // 导入领域服务
-import { FileProcessor, FileProcessorOptions } from './domain/FileProcessor'
 import { ChunkManager } from './domain/ChunkManager'
 import { HashCalculator } from './domain/HashCalculator'
-import { StateManager } from './domain/StateManager'
 import { UploadScheduler, UploadSchedulerFactory } from './domain/UploadScheduler'
 import { SessionManager } from './domain/SessionManager'
 
 // 导入基础设施
 import { EventBus } from './infrastructure/EventBus'
 import { NetworkAdapter } from './infrastructure/NetworkAdapter'
-import { LocalStorageAdapter } from './infrastructure/StorageAdapter';
-import { RepositoryFactory } from './data-access/repositories';
+import { LocalStorageAdapter } from './infrastructure/StorageAdapter'
+import { RepositoryFactory } from './data-access/repositories'
 import { TimerService } from './infrastructure/TimerService'
 import { WorkerAdapter } from './infrastructure/WorkerAdapter'
 
@@ -35,25 +32,29 @@ export interface WfUploadOptions extends UploadServiceOptions {
   baseURL?: string
   timeout?: number
   headers?: Record<string, string>
-  
+
   // 文件处理配置
   maxFileSize?: number
   allowedTypes?: string[]
   allowedExtensions?: string[]
-  
+
   // 上传配置
   chunkSize?: number
   concurrency?: number
   retryCount?: number
   retryDelay?: number
-  
+
   // 功能开关
-  enableSecondUpload?: boolean
   enableResume?: boolean
   enableProgress?: boolean
   enableRetry?: boolean
   autoCleanup?: boolean
-  
+
+  // 智能并发配置
+  enableAdaptiveConcurrency?: boolean
+  minConcurrency?: number
+  maxConcurrency?: number
+
   // 事件回调
   onProgress?: (progress: UploadProgress) => void
   onError?: (error: UploadError) => void
@@ -69,8 +70,7 @@ export interface WfUploadOptions extends UploadServiceOptions {
  */
 export class WfUpload {
   private uploadService: UploadService
-  private progressService: ProgressService
-  private errorService: ErrorService
+  private chunkManager: ChunkManager
   private eventBus: EventBus
   private options: WfUploadOptions
   private currentSessionId?: string
@@ -79,23 +79,26 @@ export class WfUpload {
   constructor(file: File, options: WfUploadOptions = {}) {
     this.file = file
     this.options = {
-      chunkSize: 2 * 1024 * 1024, // 2MB
+      chunkSize: 5 * 1024 * 1024, // 5MB
       concurrency: 3,
       retryCount: 3,
       retryDelay: 1000,
-      enableSecondUpload: true,
       enableResume: true,
       enableProgress: true,
       enableRetry: true,
+      enableAdaptiveConcurrency: true,
+      minConcurrency: 1,
+      maxConcurrency: 6,
       autoCleanup: true,
       ...options
     }
 
     // 创建基础服务
-    const eventBus = new EventBus();
-    const timerService = new TimerService();
-    const workerAdapter = new WorkerAdapter();
-    const networkAdapter = new NetworkAdapter();
+    this.eventBus = new EventBus()
+    const timerService = new TimerService()
+    const workerAdapter = new WorkerAdapter()
+    const networkAdapter = new NetworkAdapter()
+
     // 应用网络默认配置（超时、请求头）
     networkAdapter.setDefaultConfig({
       timeout: this.options.timeout,
@@ -103,54 +106,58 @@ export class WfUpload {
     })
 
     // 创建存储库
-    const storageAdapter = new LocalStorageAdapter();
-    const chunkRepository = RepositoryFactory.createChunkRepository(storageAdapter);
-    const sessionRepository = RepositoryFactory.createSessionRepository(storageAdapter);
+    const storageAdapter = new LocalStorageAdapter()
+    const chunkRepository = RepositoryFactory.createChunkRepository(storageAdapter)
+    const sessionRepository = RepositoryFactory.createSessionRepository(storageAdapter)
 
     // 创建核心服务
-    const hashCalculator = new HashCalculator(eventBus, workerAdapter);
-    const chunkManager = new ChunkManager(chunkRepository, eventBus);
-    const sessionManager = new SessionManager(sessionRepository, eventBus, timerService);
-    const stateManager = new StateManager(eventBus, storageAdapter);
-    const fileProcessor = new FileProcessor(this.options);
+    const hashCalculator = new HashCalculator(this.eventBus, workerAdapter)
+    const workerScriptURL = new URL('./workers/hashWorker.js', import.meta.url).toString()
+    hashCalculator.setOptions({ useWorker: true, workerScriptURL })
 
-    // 初始化基础设施
-    this.eventBus = eventBus
-    
-    // 创建应用服务
-    const progressService = new ProgressService(eventBus, timerService, stateManager, chunkManager, sessionManager);
-    const errorService = new ErrorService(eventBus, timerService, stateManager, sessionManager);
-    
-    // 先初始化应用服务
+    this.chunkManager = new ChunkManager(chunkRepository, this.eventBus)
+    const sessionManager = new SessionManager(sessionRepository, this.eventBus, timerService)
+
+    // 配置智能并发控制
+    if (this.options.enableAdaptiveConcurrency) {
+      this.chunkManager.configureConcurrency({
+        maxConcurrency: this.options.maxConcurrency!,
+        minConcurrency: this.options.minConcurrency!,
+        adaptiveMode: true,
+        errorThreshold: 0.2,
+        performanceThreshold: 0.8,
+      })
+    }
+
+    // 先创建上传服务（不传入调度器）
     this.uploadService = new UploadService(
-      fileProcessor,
-      chunkManager,
+      this.chunkManager,
       hashCalculator,
-      stateManager,
-      null as any, // 临时占位符，稍后设置 uploadScheduler
+      undefined, // 调度器稍后设置
       sessionManager,
       networkAdapter,
-      eventBus
-    );
+      this.eventBus
+    )
 
     // 创建上传调度器
     const uploadScheduler = UploadSchedulerFactory.create(
       this.uploadService,
-      eventBus,
+      this.eventBus,
       timerService,
       {
         maxConcurrency: this.options.concurrency!,
         retryDelay: this.options.retryDelay!,
         maxRetries: this.options.retryCount!
       }
-    );
+    )
 
     // 设置上传调度器
-    this.uploadService.setUploadScheduler(uploadScheduler);
+    this.uploadService.setUploadScheduler(uploadScheduler)
 
-    // 保存服务引用
-    this.progressService = progressService;
-    this.errorService = errorService;
+    // 配置重试机制
+    if (this.options.enableRetry && this.options.retryConfig) {
+      this.uploadService.configureRetry(this.options.retryConfig)
+    }
 
     // 设置事件监听
     this.setupEventListeners()
@@ -163,11 +170,11 @@ export class WfUpload {
     try {
       const session = await this.uploadService.startUpload(this.file, this.options)
       this.currentSessionId = session.id
-      
+
       if (this.options.onStart) {
         this.options.onStart(session.id)
       }
-      
+
       return session.id
     } catch (error) {
       const uploadError: UploadError = {
@@ -176,11 +183,11 @@ export class WfUpload {
         message: error instanceof Error ? error.message : 'Unknown error',
         retryable: true
       }
-      
+
       if (this.options.onError) {
         this.options.onError(uploadError)
       }
-      
+
       throw error
     }
   }
@@ -266,21 +273,21 @@ export class WfUpload {
   /**
    * 事件监听
    */
-  on(event: string, callback: (...args: any[]) => void): void {
+  on(event: string, callback: (...args: unknown[]) => void): void {
     this.eventBus.on(event, callback)
   }
 
   /**
    * 取消事件监听
    */
-  off(event: string, callback: (...args: any[]) => void): void {
+  off(event: string, callback: (...args: unknown[]) => void): void {
     this.eventBus.off(event, callback)
   }
 
   /**
    * 一次性事件监听
    */
-  once(event: string, callback: (...args: any[]) => void): void {
+  once(event: string, callback: (...args: unknown[]) => void): void {
     this.eventBus.once(event, callback)
   }
 
@@ -291,21 +298,15 @@ export class WfUpload {
     if (this.currentSessionId) {
       this.uploadService.cancelUpload(this.currentSessionId).catch(console.error)
     }
+
     this.eventBus.clear()
   }
 
   /**
-   * 获取进度服务
+   * 获取分片管理器
    */
-  getProgressService(): ProgressService {
-    return this.progressService
-  }
-
-  /**
-   * 获取错误服务
-   */
-  getErrorService(): ErrorService {
-    return this.errorService
+  getChunkManager(): ChunkManager {
+    return this.chunkManager
   }
 
   /**
@@ -353,8 +354,14 @@ export async function uploadFile(
   const upload = new WfUpload(file, options)
   
   return new Promise((resolve, reject) => {
-    upload.on('upload:completed', resolve)
-    upload.on('upload:error', reject)
+    upload.on('upload:completed', (...args: unknown[]) => {
+      const result = args[0] as UploadResult
+      resolve(result)
+    })
+    upload.on('upload:error', (...args: unknown[]) => {
+      const error = args[0] as UploadError
+      reject(error)
+    })
     upload.start().catch(reject)
   })
 }
@@ -365,7 +372,7 @@ export type {
   UploadProgress,
   UploadResult,
   UploadError,
-  FileProcessorOptions
+  RetryConfig
 }
 
 // 导出枚举
@@ -379,19 +386,16 @@ export {
 // 导出核心服务（供高级用户使用）
 export {
   UploadService,
-  ProgressService,
-  ErrorService,
-  FileProcessor,
   ChunkManager,
   HashCalculator,
-  StateManager,
   UploadScheduler,
   SessionManager,
   EventBus,
   NetworkAdapter,
   LocalStorageAdapter,
   TimerService,
-  WorkerAdapter
+  WorkerAdapter,
+  RetryService
 }
 
 // 默认导出

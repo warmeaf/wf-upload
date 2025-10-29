@@ -32,7 +32,7 @@ export interface SessionConfig {
 
 export interface SessionManagerInterface {
   // 创建会话
-  createSession(file: File, options?: UploadOptions): Promise<UploadSession>
+  createSession(options?: UploadOptions): Promise<UploadSession>
   // 获取会话
   getSession(sessionId: string): Promise<UploadSession | undefined>
   // 更新会话
@@ -47,6 +47,8 @@ export interface SessionManagerInterface {
   resumeSession(sessionId: string): Promise<void>
   // 完成会话
   completeSession(sessionId: string): Promise<void>
+  // 失败会话
+  failSession(sessionId: string): Promise<void>
   // 清理过期会话
   cleanupExpiredSessions(): Promise<number>
   // 获取会话统计
@@ -103,15 +105,18 @@ export class SessionManager implements SessionManagerInterface {
     }
   }
 
-  async createSession(_file: File, options: UploadOptions = {}): Promise<UploadSession> {
+  async createSession(options: UploadOptions = {}): Promise<UploadSession> {
     // 检查会话数量限制
     const activeSessions = await this.getActiveSessions()
     if (activeSessions.length >= this.config.maxSessions) {
       throw new Error(`Maximum number of sessions (${this.config.maxSessions}) exceeded`)
     }
 
+    // 生成文件ID
+    const fileId = `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
     // 创建会话实体
-    const sessionEntity = EntityFactory.createSessionEntity(`file_${Date.now()}`, options)
+    const sessionEntity = EntityFactory.createSessionEntity(fileId, options)
     
     // 设置过期时间
     const expirationTime = options.autoCleanup !== false 
@@ -191,6 +196,29 @@ export class SessionManager implements SessionManagerInterface {
     this.eventBus.emit('session:updated', {
       sessionId,
       updates
+    })
+  }
+
+  async failSession(sessionId: string): Promise<void> {
+    const session = await this.getSession(sessionId)
+    if (!session) {
+      throw new Error(`Session ${sessionId} not found`)
+    }
+
+    // 清除超时定时器
+    this.clearSessionTimeout(sessionId)
+
+    // 更新状态
+    await this.sessionRepository.updateStatus(sessionId, SessionStatus.FAILED)
+
+    // 计算会话持续时间
+    const duration = Date.now() - session.createdAt
+
+    this.eventBus.emit('session:failed', {
+      sessionId,
+      failedAt: Date.now(),
+      duration,
+      uploadedSize: session.progress.uploadedSize
     })
   }
 

@@ -3,6 +3,8 @@
  * 定义系统中的核心数据模型
  */
 
+import { RetryConfig } from '../infrastructure/RetryService'
+
 export enum ChunkStatus {
   PENDING = 'pending',
   UPLOADING = 'uploading',
@@ -98,7 +100,7 @@ export interface UploadOptions {
   baseURL?: string
   headers?: Record<string, string>
   enableResume?: boolean
-  enableSecondUpload?: boolean
+  retryConfig?: Partial<RetryConfig>
   autoCleanup?: boolean
 }
 
@@ -230,7 +232,6 @@ export class EntityFactory {
         retryDelay: 1000,
         timeout: 30000,
         enableResume: true,
-        enableSecondUpload: true,
         autoCleanup: true,
         ...options
       },

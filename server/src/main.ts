@@ -5,7 +5,13 @@ import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.useGlobalPipes(new ValidationPipe());
+  app.useGlobalPipes(
+    new ValidationPipe({
+      transform: true, // 启用自动类型转换
+      whitelist: true, // 只保留 DTO 中定义的属性
+      forbidNonWhitelisted: true, // 禁止未定义的属性
+    }),
+  );
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT');

@@ -1,12 +1,17 @@
 /**
  * 哈希计算器 - 领域服务层
  * 支持多种哈希算法、Worker并行计算和验证功能
+ * 集成Spark-MD5库确保MD5计算准确性
  */
 
-import { WorkerAdapterInterface, WorkerMessage } from '../infrastructure/WorkerAdapter'
+import {
+  WorkerAdapterInterface,
+  WorkerMessage,
+} from '../infrastructure/WorkerAdapter'
 import { EventBusInterface } from '../infrastructure/EventBus'
+import SparkMD5 from 'spark-md5'
 
-export type HashAlgorithm = 'md5' | 'sha1' | 'sha256' | 'sha512'
+export type HashAlgorithm = 'md5'
 
 export interface HashResult {
   algorithm: HashAlgorithm
@@ -24,24 +29,27 @@ export interface HashProgress {
 }
 
 export interface HashCalculationOptions {
-  algorithm: HashAlgorithm
   useWorker: boolean
   chunkSize: number
   enableProgress: boolean
   enableCache: boolean
+  workerScriptURL?: string
 }
 
 export interface HashCalculatorInterface {
   // 计算分片哈希
-  calculateChunkHash(chunk: Blob, algorithm?: HashAlgorithm): Promise<string>
+  calculateChunkHash(chunk: Blob): Promise<string>
   // 计算文件哈希
-  calculateFileHash(chunks: Blob[], algorithm?: HashAlgorithm): Promise<string>
+  calculateFileHash(chunks: Blob[]): Promise<string>
   // 增量计算文件哈希
-  calculateFileHashIncremental(file: File, algorithm?: HashAlgorithm, onProgress?: (progress: HashProgress) => void): Promise<HashResult>
+  calculateFileHashIncremental(
+    file: File,
+    onProgress?: (progress: HashProgress) => void
+  ): Promise<HashResult>
   // 验证哈希
-  verifyHash(data: Blob, expectedHash: string, algorithm?: HashAlgorithm): Promise<boolean>
+  verifyHash(data: Blob, expectedHash: string): Promise<boolean>
   // 批量计算哈希
-  batchCalculateHash(chunks: Blob[], algorithm?: HashAlgorithm): Promise<string[]>
+  batchCalculateHash(chunks: Blob[]): Promise<string[]>
   // 设置选项
   setOptions(options: Partial<HashCalculationOptions>): void
   // 取消计算
@@ -53,12 +61,13 @@ export class HashCalculator implements HashCalculatorInterface {
   private eventBus: EventBusInterface
   private hashCache: Map<string, string> = new Map()
   private activeTasks: Map<string, AbortController> = new Map()
+  private workerId?: string
   private options: HashCalculationOptions = {
-    algorithm: 'md5',
     useWorker: true,
     chunkSize: 2 * 1024 * 1024, // 2MB
     enableProgress: true,
-    enableCache: true
+    enableCache: true,
+    workerScriptURL: undefined,
   }
 
   constructor(
@@ -69,9 +78,9 @@ export class HashCalculator implements HashCalculatorInterface {
     this.workerAdapter = workerAdapter
   }
 
-  async calculateChunkHash(chunk: Blob, algorithm: HashAlgorithm = this.options.algorithm): Promise<string> {
-    const cacheKey = this.getCacheKey(chunk, algorithm)
-    
+  async calculateChunkHash(chunk: Blob): Promise<string> {
+    const cacheKey = this.getCacheKey(chunk)
+
     // 检查缓存
     if (this.options.enableCache && this.hashCache.has(cacheKey)) {
       return this.hashCache.get(cacheKey)!
@@ -81,9 +90,9 @@ export class HashCalculator implements HashCalculatorInterface {
     let hash: string
 
     if (this.options.useWorker && this.workerAdapter) {
-      hash = await this.calculateHashWithWorker(chunk, algorithm)
+      hash = await this.calculateHashWithWorker(chunk)
     } else {
-      hash = await this.calculateHashNative(chunk, algorithm)
+      hash = await this.calculateHashNative(chunk)
     }
 
     const computeTime = Date.now() - startTime
@@ -95,34 +104,34 @@ export class HashCalculator implements HashCalculatorInterface {
 
     this.eventBus.emit('hash:chunk:completed', {
       size: chunk.size,
-      algorithm,
+      algorithm: 'md5' as HashAlgorithm,
       hash,
-      computeTime
+      computeTime,
     })
 
     return hash
   }
 
-  async calculateFileHash(chunks: Blob[], algorithm: HashAlgorithm = this.options.algorithm): Promise<string> {
+  async calculateFileHash(chunks: Blob[]): Promise<string> {
     if (chunks.length === 0) {
       throw new Error('No chunks provided for hash calculation')
     }
 
     if (chunks.length === 1) {
-      return this.calculateChunkHash(chunks[0], algorithm)
+      return this.calculateChunkHash(chunks[0])
     }
 
     // 对于多个分片，需要按顺序计算整体哈希
-    const hasher = await this.createHasher(algorithm)
-    
+    const hasher = await this.createHasher()
+
     for (let i = 0; i < chunks.length; i++) {
       const chunkBuffer = await chunks[i].arrayBuffer()
       hasher.update(new Uint8Array(chunkBuffer))
-      
+
       this.eventBus.emit('hash:file:progress', {
         processed: i + 1,
         total: chunks.length,
-        percentage: ((i + 1) / chunks.length) * 100
+        percentage: ((i + 1) / chunks.length) * 100,
       })
     }
 
@@ -132,7 +141,6 @@ export class HashCalculator implements HashCalculatorInterface {
 
   async calculateFileHashIncremental(
     file: File,
-    algorithm: HashAlgorithm = this.options.algorithm,
     onProgress?: (progress: HashProgress) => void
   ): Promise<HashResult> {
     const taskId = this.generateTaskId()
@@ -142,15 +150,19 @@ export class HashCalculator implements HashCalculatorInterface {
     const startTime = Date.now()
     const chunkSize = this.options.chunkSize
     const totalChunks = Math.ceil(file.size / chunkSize)
-    
+
     try {
       // 优先使用Worker进行并行计算
       if (this.options.useWorker && this.workerAdapter) {
-        return await this.calculateFileHashWithWorker(file, algorithm, onProgress, abortController)
+        return await this.calculateFileHashWithWorker(
+          file,
+          onProgress,
+          abortController
+        )
       }
 
-      // 降级到主线程计算
-      const hasher = await this.createHasher(algorithm)
+      // 降级到主线程计算（与Worker保持一致：对每个分片计算MD5，再对拼接后的字符串计算MD5）
+      const partialHashes: string[] = []
       let processedBytes = 0
 
       for (let i = 0; i < totalChunks; i++) {
@@ -162,8 +174,10 @@ export class HashCalculator implements HashCalculatorInterface {
         const end = Math.min(start + chunkSize, file.size)
         const chunk = file.slice(start, end)
         const chunkBuffer = await chunk.arrayBuffer()
-        
-        hasher.update(new Uint8Array(chunkBuffer))
+
+        // 每个片段单独计算MD5
+        const chunkHash = await this.calculateMD5WithSparkMD5(chunkBuffer)
+        partialHashes.push(chunkHash)
         processedBytes += chunk.size
 
         // 计算进度
@@ -172,12 +186,11 @@ export class HashCalculator implements HashCalculatorInterface {
           total: file.size,
           percentage: (processedBytes / file.size) * 100,
           speed: processedBytes / ((Date.now() - startTime) / 1000),
-          remainingTime: 0
+          remainingTime: 0,
         }
-        
-        progress.remainingTime = progress.speed > 0 
-          ? (file.size - processedBytes) / progress.speed 
-          : 0
+
+        progress.remainingTime =
+          progress.speed > 0 ? (file.size - processedBytes) / progress.speed : 0
 
         if (onProgress) {
           onProgress(progress)
@@ -188,25 +201,24 @@ export class HashCalculator implements HashCalculatorInterface {
         }
 
         // 让出控制权，避免阻塞UI（减少延迟）
-        if (i % 10 === 0) { // 每10个分片让出一次控制权
+        if (i % 10 === 0) {
           await this.delay(0)
         }
       }
 
-      const hashResult = hasher.digest()
-      const hash = typeof hashResult === 'string' ? hashResult : await hashResult
+      // 与Worker一致：对所有分片哈希拼接后再次MD5
+      const finalHash = await this.combineHashes(partialHashes)
       const computeTime = Date.now() - startTime
 
       const result: HashResult = {
-        algorithm,
-        hash,
+        algorithm: 'md5' as HashAlgorithm,
+        hash: finalHash,
         size: file.size,
-        computeTime
+        computeTime,
       }
 
       this.eventBus.emit('hash:file:completed', result)
       return result
-
     } finally {
       this.activeTasks.delete(taskId)
     }
@@ -217,52 +229,50 @@ export class HashCalculator implements HashCalculatorInterface {
    */
   private async calculateFileHashWithWorker(
     file: File,
-    algorithm: HashAlgorithm,
     onProgress?: (progress: HashProgress) => void,
     abortController?: AbortController
   ): Promise<HashResult> {
     const startTime = Date.now()
     const chunkSize = this.options.chunkSize
     const totalChunks = Math.ceil(file.size / chunkSize)
-    
+
     // 将文件分成多个部分，每个Worker处理一部分
     const workerCount = Math.min(4, totalChunks) // 最多4个Worker
     const chunksPerWorker = Math.ceil(totalChunks / workerCount)
-    
+
     const workerPromises: Promise<string>[] = []
-    
+
     for (let workerIndex = 0; workerIndex < workerCount; workerIndex++) {
       const startChunk = workerIndex * chunksPerWorker
       const endChunk = Math.min(startChunk + chunksPerWorker, totalChunks)
-      
+
       if (startChunk >= totalChunks) break
-      
+
       const workerPromise = this.processChunksInWorker(
-        file, 
-        algorithm, 
-        startChunk, 
-        endChunk, 
+        file,
+        startChunk,
+        endChunk,
         chunkSize,
         onProgress,
         abortController
       )
-      
+
       workerPromises.push(workerPromise)
     }
-    
+
     // 等待所有Worker完成
     const partialHashes = await Promise.all(workerPromises)
-    
+
     // 合并所有部分的hash
-    const finalHash = await this.combineHashes(partialHashes, algorithm)
-    
+    const finalHash = await this.combineHashes(partialHashes)
+
     const computeTime = Date.now() - startTime
-    
+
     const result: HashResult = {
-      algorithm,
+      algorithm: 'md5' as HashAlgorithm,
       hash: finalHash,
       size: file.size,
-      computeTime
+      computeTime,
     }
 
     this.eventBus.emit('hash:file:completed', result)
@@ -274,7 +284,6 @@ export class HashCalculator implements HashCalculatorInterface {
    */
   private async processChunksInWorker(
     file: File,
-    algorithm: HashAlgorithm,
     startChunk: number,
     endChunk: number,
     chunkSize: number,
@@ -286,18 +295,18 @@ export class HashCalculator implements HashCalculatorInterface {
     }
 
     const chunks: ArrayBuffer[] = []
-    
+
     for (let i = startChunk; i < endChunk; i++) {
       if (abortController?.signal.aborted) {
         throw new Error('Hash calculation was cancelled')
       }
-      
+
       const start = i * chunkSize
       const end = Math.min(start + chunkSize, file.size)
       const chunk = file.slice(start, end)
       const buffer = await chunk.arrayBuffer()
       chunks.push(buffer)
-      
+
       // 报告进度
       if (onProgress) {
         const processedBytes = (i + 1) * chunkSize
@@ -306,7 +315,7 @@ export class HashCalculator implements HashCalculatorInterface {
           total: file.size,
           percentage: (Math.min(processedBytes, file.size) / file.size) * 100,
           speed: processedBytes / ((Date.now() - Date.now()) / 1000 || 1),
-          remainingTime: 0
+          remainingTime: 0,
         }
         onProgress(progress)
       }
@@ -317,62 +326,44 @@ export class HashCalculator implements HashCalculatorInterface {
       type: 'calculateHashBatch',
       data: {
         chunks,
-        algorithm
-      }
+        algorithm: 'md5' as HashAlgorithm,
+      },
     }
 
-    const response = await this.workerAdapter.postMessage('hash-worker', message)
+    const workerId = await this.ensureWorker()
+    const response = await this.workerAdapter.postMessage(workerId, message)
     return response.data.hash
   }
 
   /**
    * 合并多个部分hash为最终hash
    */
-  private async combineHashes(hashes: string[], algorithm: HashAlgorithm): Promise<string> {
+  private async combineHashes(hashes: string[]): Promise<string> {
     // 简化实现：将所有hash连接后再次计算hash
     const combinedString = hashes.join('')
     const buffer = new TextEncoder().encode(combinedString)
-    
-    let cryptoAlgorithm: string
-    switch (algorithm) {
-      case 'sha1':
-        cryptoAlgorithm = 'SHA-1'
-        break
-      case 'sha256':
-        cryptoAlgorithm = 'SHA-256'
-        break
-      case 'sha512':
-        cryptoAlgorithm = 'SHA-512'
-        break
-      case 'md5':
-      default:
-        return this.calculateMD5Native(buffer.buffer)
-    }
-
-    const hashBuffer = await crypto.subtle.digest(cryptoAlgorithm, buffer)
-    const hashArray = Array.from(new Uint8Array(hashBuffer))
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+    return this.calculateMD5Native(buffer.buffer)
   }
 
-  async verifyHash(data: Blob, expectedHash: string, algorithm: HashAlgorithm = this.options.algorithm): Promise<boolean> {
-    const calculatedHash = await this.calculateChunkHash(data, algorithm)
+  async verifyHash(data: Blob, expectedHash: string): Promise<boolean> {
+    const calculatedHash = await this.calculateChunkHash(data)
     const isValid = calculatedHash.toLowerCase() === expectedHash.toLowerCase()
-    
+
     this.eventBus.emit('hash:verification:completed', {
       expected: expectedHash,
       calculated: calculatedHash,
       isValid,
-      size: data.size
+      size: data.size,
     })
 
     return isValid
   }
 
-  async batchCalculateHash(chunks: Blob[], algorithm: HashAlgorithm = this.options.algorithm): Promise<string[]> {
+  async batchCalculateHash(chunks: Blob[]): Promise<string[]> {
     if (this.options.useWorker && this.workerAdapter) {
-      return this.batchCalculateHashWithWorker(chunks, algorithm)
+      return this.batchCalculateHashWithWorker(chunks)
     } else {
-      return this.batchCalculateHashNative(chunks, algorithm)
+      return this.batchCalculateHashNative(chunks)
     }
   }
 
@@ -397,11 +388,11 @@ export class HashCalculator implements HashCalculatorInterface {
   getCacheStats(): { size: number; keys: string[] } {
     return {
       size: this.hashCache.size,
-      keys: Array.from(this.hashCache.keys())
+      keys: Array.from(this.hashCache.keys()),
     }
   }
 
-  private async calculateHashWithWorker(blob: Blob, algorithm: HashAlgorithm): Promise<string> {
+  private async calculateHashWithWorker(blob: Blob): Promise<string> {
     if (!this.workerAdapter) {
       throw new Error('Worker adapter not available')
     }
@@ -412,40 +403,44 @@ export class HashCalculator implements HashCalculatorInterface {
       type: 'calculateHash',
       data: {
         buffer,
-        algorithm
-      }
+        algorithm: 'md5' as HashAlgorithm,
+      },
     }
 
-    const response = await this.workerAdapter.postMessage('hash-worker', message)
+    const workerId = await this.ensureWorker()
+    const response = await this.workerAdapter.postMessage(workerId, message)
     return response.data.hash
   }
 
-  private async calculateHashNative(blob: Blob, algorithm: HashAlgorithm): Promise<string> {
+  private async calculateHashNative(blob: Blob): Promise<string> {
     const buffer = await blob.arrayBuffer()
-    
-    let cryptoAlgorithm: string
-    switch (algorithm) {
-      case 'sha1':
-        cryptoAlgorithm = 'SHA-1'
-        break
-      case 'sha256':
-        cryptoAlgorithm = 'SHA-256'
-        break
-      case 'sha512':
-        cryptoAlgorithm = 'SHA-512'
-        break
-      case 'md5':
-      default:
-        // 浏览器原生不支持MD5，需要使用第三方库或Worker
-        return this.calculateMD5Native(buffer)
-    }
-
-    const hashBuffer = await crypto.subtle.digest(cryptoAlgorithm, buffer)
-    const hashArray = Array.from(new Uint8Array(hashBuffer))
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+    return this.calculateMD5WithSparkMD5(buffer)
   }
 
-  private async batchCalculateHashWithWorker(chunks: Blob[], algorithm: HashAlgorithm): Promise<string[]> {
+  private async calculateMD5WithSparkMD5(
+    data: ArrayBuffer | Uint8Array
+  ): Promise<string> {
+    const spark = new SparkMD5.ArrayBuffer()
+    
+    // 确保数据是ArrayBuffer类型
+    let buffer: ArrayBuffer
+    if (data instanceof Uint8Array) {
+      buffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer
+    } else {
+      buffer = data as ArrayBuffer
+    }
+    
+    spark.append(buffer)
+    return spark.end()
+  }
+
+  private calculateMD5Native(buffer: ArrayBuffer): string {
+    return SparkMD5.ArrayBuffer.hash(buffer)
+  }
+
+  private async batchCalculateHashWithWorker(
+    chunks: Blob[]
+  ): Promise<string[]> {
     if (!this.workerAdapter) {
       throw new Error('Worker adapter not available')
     }
@@ -455,50 +450,44 @@ export class HashCalculator implements HashCalculatorInterface {
       const message: WorkerMessage = {
         id: `${this.generateTaskId()}_${index}`,
         type: 'calculateHash',
-        data: { buffer, algorithm }
+        data: { buffer, algorithm: 'md5' as HashAlgorithm },
       }
-      
-      const response = await this.workerAdapter!.postMessage('hash-worker', message)
+
+      const workerId = await this.ensureWorker()
+      const response = await this.workerAdapter!.postMessage(workerId, message)
       return response.data.hash
     })
 
     return Promise.all(promises)
   }
 
-  private async batchCalculateHashNative(chunks: Blob[], algorithm: HashAlgorithm): Promise<string[]> {
-    const promises = chunks.map(chunk => this.calculateHashNative(chunk, algorithm))
+  // 确保 Worker 已创建并返回其ID
+  private async ensureWorker(): Promise<string> {
+    if (!this.workerAdapter) {
+      throw new Error('Worker adapter not available')
+    }
+    if (this.workerId) {
+      return this.workerId
+    }
+    const scriptURL = this.options.workerScriptURL
+    if (!scriptURL) {
+      throw new Error('Worker script URL is not configured (workerScriptURL)')
+    }
+    this.workerId = await this.workerAdapter.createWorker(scriptURL)
+    return this.workerId
+  }
+
+  private async batchCalculateHashNative(chunks: Blob[]): Promise<string[]> {
+    const promises = chunks.map((chunk) => this.calculateHashNative(chunk))
     return Promise.all(promises)
   }
 
-  private async createHasher(algorithm: HashAlgorithm): Promise<IncrementalHasher> {
-    switch (algorithm) {
-      case 'md5':
-        return new MD5Hasher()
-      case 'sha1':
-        return new SHA1Hasher()
-      case 'sha256':
-        return new SHA256Hasher()
-      case 'sha512':
-        return new SHA512Hasher()
-      default:
-        throw new Error(`Unsupported hash algorithm: ${algorithm}`)
-    }
+  private async createHasher(): Promise<IncrementalHasher> {
+    return new SparkMD5Hasher()
   }
 
-  private async calculateMD5Native(buffer: ArrayBuffer): Promise<string> {
-    // 这里需要实现MD5算法或使用第三方库
-    // 为了简化，这里返回一个模拟的哈希值
-    // 在实际项目中，应该使用 crypto-js 或其他MD5库
-    const array = new Uint8Array(buffer)
-    let hash = 0
-    for (let i = 0; i < array.length; i++) {
-      hash = ((hash << 5) - hash + array[i]) & 0xffffffff
-    }
-    return Math.abs(hash).toString(16).padStart(8, '0')
-  }
-
-  private getCacheKey(blob: Blob, algorithm: HashAlgorithm): string {
-    return `${algorithm}_${blob.size}_${blob.type}`
+  private getCacheKey(blob: Blob): string {
+    return `md5_${blob.size}_${blob.type}`
   }
 
   private generateTaskId(): string {
@@ -506,7 +495,7 @@ export class HashCalculator implements HashCalculatorInterface {
   }
 
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms))
+    return new Promise((resolve) => setTimeout(resolve, ms))
   }
 }
 
@@ -519,105 +508,35 @@ interface IncrementalHasher {
 }
 
 /**
- * MD5增量哈希器
+ * MD5增量哈希器 - 使用Spark-MD5
  */
-class MD5Hasher implements IncrementalHasher {
-  private buffer: number[] = []
-  private length: number = 0
+class SparkMD5Hasher implements IncrementalHasher {
+  private sparkMD5: SparkMD5.ArrayBuffer
+  private buffer: ArrayBuffer[] = []
+
+  constructor() {
+    this.sparkMD5 = new SparkMD5.ArrayBuffer()
+  }
 
   update(data: Uint8Array): void {
-    // 简化的MD5实现，实际项目中应使用成熟的库
-    for (let i = 0; i < data.length; i++) {
-      this.buffer.push(data[i])
-      this.length++
-    }
+    this.buffer.push(data.buffer as ArrayBuffer)
   }
 
   digest(): string {
-    // 简化的MD5摘要计算
-    let hash = this.length
-    for (let i = 0; i < this.buffer.length; i++) {
-      hash = ((hash << 5) - hash + this.buffer[i]) & 0xffffffff
-    }
-    return Math.abs(hash).toString(16).padStart(8, '0')
-  }
-}
-
-/**
- * SHA1增量哈希器
- */
-class SHA1Hasher implements IncrementalHasher {
-  private chunks: Uint8Array[] = []
-
-  update(data: Uint8Array): void {
-    this.chunks.push(data)
-  }
-
-  async digest(): Promise<string> {
-    const totalLength = this.chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+    // 合并所有缓冲区并计算最终哈希
+    const totalLength = this.buffer.reduce(
+      (sum, buf) => sum + buf.byteLength,
+      0
+    )
     const combined = new Uint8Array(totalLength)
     let offset = 0
-    
-    for (const chunk of this.chunks) {
-      combined.set(chunk, offset)
-      offset += chunk.length
+
+    for (const buf of this.buffer) {
+      combined.set(new Uint8Array(buf), offset)
+      offset += buf.byteLength
     }
 
-    const hashBuffer = await crypto.subtle.digest('SHA-1', combined)
-    const hashArray = Array.from(new Uint8Array(hashBuffer))
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-  }
-}
-
-/**
- * SHA256增量哈希器
- */
-class SHA256Hasher implements IncrementalHasher {
-  private chunks: Uint8Array[] = []
-
-  update(data: Uint8Array): void {
-    this.chunks.push(data)
-  }
-
-  async digest(): Promise<string> {
-    const totalLength = this.chunks.reduce((sum, chunk) => sum + chunk.length, 0)
-    const combined = new Uint8Array(totalLength)
-    let offset = 0
-    
-    for (const chunk of this.chunks) {
-      combined.set(chunk, offset)
-      offset += chunk.length
-    }
-
-    const hashBuffer = await crypto.subtle.digest('SHA-256', combined)
-    const hashArray = Array.from(new Uint8Array(hashBuffer))
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-  }
-}
-
-/**
- * SHA512增量哈希器
- */
-class SHA512Hasher implements IncrementalHasher {
-  private chunks: Uint8Array[] = []
-
-  update(data: Uint8Array): void {
-    this.chunks.push(data)
-  }
-
-  async digest(): Promise<string> {
-    const totalLength = this.chunks.reduce((sum, chunk) => sum + chunk.length, 0)
-    const combined = new Uint8Array(totalLength)
-    let offset = 0
-    
-    for (const chunk of this.chunks) {
-      combined.set(chunk, offset)
-      offset += chunk.length
-    }
-
-    const hashBuffer = await crypto.subtle.digest('SHA-512', combined)
-    const hashArray = Array.from(new Uint8Array(hashBuffer))
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+    return this.sparkMD5.append(combined.buffer).end()
   }
 }
 
