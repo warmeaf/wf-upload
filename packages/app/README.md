@@ -2,77 +2,105 @@
 
 ## 整体流程
 
-用户选择文件后，首先调用 /file/create 创建上传会话，服务端返回 token。后续的分片哈希校验、分片上传与最终合并等所有请求均需携带该 token，用于会话校验与文件关联。
+核心思想是并发计算 Hash 与上传分片，并将文件秒传的检查时机提前。
 
-分片完成后，立即在 Worker 中计算分片 hash。每计算完一个分片 hash，抛出事件 ChunkHashed，在 Worker 外监听 ChunkHashed 事件将该分片任务推入"并发队列（限流 N）"。队列对每个分片执行：先调用 /file/patchHash(type='chunk') 检查是否已存在；已存在则标记成功并跳过上传；不存在则调用 /file/uploadChunk 上传，成功后标记完成。若上传失败，则抛出 QueueAborted 事件并中止整个上传。如果队列中的任务“全部成功完成”则抛出事件 QueueDrained（QueueDrained：要求 allChunksHashed、pending===0、inFlight===0、failed===0 且 completed===totalChunks）
+### 文字描述
 
-当所有分片 hash 都已计算完成时，抛出 AllChunksHashed 事件；随后在 Worker 中按顺序合并分片 hash 计算文件 hash，并抛出 FileHashed 事件。在 Worker 外监听 FileHashed 后，调用 /file/patchHash 检查文件是否已上传：
+1.  **会话创建**: 用户选择文件后，进行基本校验，然后请求 `/file/create` 接口创建上传会话，获取用于后续所有请求身份验证的 `token`。
 
-- 已上传：若并发队列仍有进行中的任务，则主动终止任务队列中的任务，并手动将任务队列的状态设置为“全部成功完成”（allChunksHashed、pending===0、inFlight===0、failed===0 且 completed===totalChunks），并抛出事件 QueueDrained；若并发队列中的任务都完成则抛出事件 QueueDrained（allChunksHashed、pending===0、inFlight===0、failed===0 且 completed===totalChunks）。
-- 未上传：若并发队列仍有进行中的任务，则不继续做任何事情；若队列为空，则抛出事件 QueueDrained（QueueDrained：要求 allChunksHashed、pending===0、inFlight===0、failed===0 且 completed===totalChunks）。
+2.  **分片与 Hash 计算 (Worker)**:
+    - 文件被切割成多个分片。
+    - 在 Worker 线程中，逐个计算分片的 Hash。
+    - 每计算完一个分片，抛出 `ChunkHashed` 事件，并附带分片信息。
+    - 所有分片 Hash 计算完毕后，抛出 `AllChunksHashed` 事件。
+    - 随后，Worker 会按顺序增量计算出整个文件的 Hash，并抛出 `FileHashed` 事件。
 
-监听事件 QueueDrained 要做的事：如果正在合并则不做任何事情，如果合并过了则不继续做任何事情直接完成整个上传；否则调用 /file/merge 进行合并，合并成功后完成上传。
+3.  **并发上传队列**:
+    - 主线程监听 `ChunkHashed` 事件，每接收到一个事件，就将一个分片上传任务推入并发队列。
+    - 队列有并发限制（例如，同时最多上传 N 个分片）。
+    - 每个队列任务首先请求 `/file/patchHash` 检查分片是否已存在于服务端（秒传）。
+      - **已存在**: 该分片标记为上传成功，无需重复上传。
+      - **不存在**: 请求 `/file/uploadChunk` 上传分片。上传成功后标记为完成。
+    - 若任一分片上传失败，整个队列将被中止，并标记上传失败。
+    - 当所有分片任务都成功完成时（`completed === totalChunks`），并且所有分片 Hash 都已计算完成（`allChunksHashed === true`），队列会抛出 `QueueDrained` 事件。
 
-注意：不允许在存在失败（failed>0）的情况下触发 QueueDrained 或 /file/merge。
+4.  **文件秒传检查与合并**:
+    - 主线程监听 `FileHashed` 事件，接收到文件 Hash 后，立即请求 `/file/patchHash` 检查文件是否已存在于服务端。
+      - **文件已存在 (秒传)**:
+        - 如果并发队列中仍有正在上传的任务，将队列状态更改为全部已完成。抛出 `QueueDrained` 事件，直接进入合并阶段。
+        - 否则，什么也不用做，让队列自然完成。
+      - **文件不存在**:
+        - 什么也不做，让队列自然完成
 
-### 流程图（Mermaid）
+5.  **最终合并**:
+    - 主线程监听 `QueueDrained` 事件。
+    - 收到事件后，只要尚未合并，先检查本地文件 hash 是否已经存在，如果不存在就将所有分片 hash 按分片顺序增量计算作为 fileHash，然后请求 `/file/merge` 接口，通知服务端。
+    - 合并成功后，整个上传过程完成。
+
+> **注意**: 只有在所有分片都成功处理（`failed === 0`）的情况下，才能触发 `QueueDrained` 事件及后续的合并请求。
+
+### 流程图 (Mermaid)
 
 ```mermaid
 flowchart TD
-  A[开始 / 选择文件] --> C0[/创建会话 /file/create/]
-  C0 --> B[切片]
+    A[开始 / 选择文件] --> C0[/创建会话 /file/create/]
+    C0 --> B[切片]
 
-  subgraph WORKER[Worker]
-    direction TB
-    W1[计算分片 Hash（逐个）] -->|每完成一个| W1E[抛出 ChunkHashed 事件]
-    W1 -->|全部完成| W1A[抛出 AllChunksHashed 事件]
-    W1A --> W2[按顺序合并分片 Hash 计算文件 Hash]
-    W2 --> W2E[抛出 FileHashed 事件]
-  end
+    subgraph WORKER[Worker 线程]
+        direction TB
+        W1[计算分片 Hash（逐个）] -->|每完成一个| W1E[抛出 ChunkHashed 事件]
+        W1 -->|全部完成| W1A[抛出 AllChunksHashed 事件]
+        W1A --> W2[按顺序增量计算文件 Hash]
+        W2 --> W2E[抛出 FileHashed 事件]
+    end
 
-  B --> W1
+    B --> W1
 
-  subgraph LISTENER[Worker外监听器]
-    direction TB
-    L1[监听 ChunkHashed] --> L1A[将分片任务推入并发队列]
-    L2[监听 FileHashed] --> L2A[/检查文件 /file/patchHash/]
-    L3[监听 QueueDrained] --> L3A{是否已合并过?}
-    L3A -->|是| L3B[直接完成上传]
-    L3A -->|否| L3C[/合并分片 /file/merge/]
-    L3C --> L3D[上传完成]
-  end
+    subgraph LISTENER[主线程监听器]
+        direction TB
+        L1[监听 ChunkHashed] --> L1A[将分片任务推入并发队列]
+        L2[监听 FileHashed] --> L2A[/检查文件秒传 /file/patchHash/]
+        L3[监听 QueueDrained] --> L3A{是否已合并?}
+        L3A -->|是| L3B[完成上传]
+        L3A --o|否| L3_CALC_HASH{文件 Hash 是否存在?}
+        L3_CALC_HASH -->|否| L3_CALC[增量计算文件 Hash]
+        L3_CALC --> L3C[/合并分片 /file/merge/]
+        L3_CALC_HASH -->|是| L3C
+        L3C --> L3D[完成上传]
+    end
 
-  W1E -.-> L1
-  W2E -.-> L2
+    W1E -.-> L1
+    W2E -.-> L2
 
-  subgraph QUEUE[并发队列（限流N）]
-    direction TB
-    Q[队列任务] --> C2[/检查分片 /file/patchHash type='chunk'/]
-    C2 -->|已存在| C4[标记成功并跳过上传]
-    C2 -->|不存在| C3[/上传分片 /file/uploadChunk/]
-    C3 -->|成功| C4[标记完成]
-    C3 -->|失败| QA[抛出 QueueAborted 事件]
-    C4 --> QC{队列全部成功完成?<br/>allChunksHashed=true<br/>pending=0, inFlight=0<br/>failed=0, completed=totalChunks}
-    QC -->|是| QD[抛出 QueueDrained 事件]
-    QC -->|否| Q
-  end
+    subgraph QUEUE[并发队列（限流 N）]
+        direction TB
+        Q[队列任务] --> C2[/检查分片 /file/patchHash/]
+        C2 -->|已存在| C4[标记成功]
+        C2 -->|不存在| C3[/上传分片 /file/uploadChunk/]
+        C3 -->|成功| C4
+        C3 -->|失败| QA[抛出 QueueAborted 事件]
+        C4 --> QC{队列是否全部成功完成?<br/>allChunksHashed=true<br/>pending=0, inFlight=0<br/>failed=0, completed=totalChunks}
+        QC -->|是| QD[抛出 QueueDrained 事件]
+        QC -->|否| Q
+    end
 
-  L1A --> Q
-  QA -.-> ABORT[终止上传（失败）]
-  QD -.-> L3
+    L1A --> Q
+    QA -.-> ABORT[终止上传]
+    QD -.-> L3
 
-  L2A -->|文件已上传| F3{并发队列仍有进行中任务?}
-  F3 -->|是| FC[主动终止队列任务<br/>手动设置队列状态为全部成功完成]
-  F3 -->|否| FD[队列任务都完成]
-  FC --> FE[抛出 QueueDrained 事件]
-  FD --> FE
-  FE --> COMPLETE[完成上传]
+    subgraph FILE_CHECK[文件秒传处理]
+        direction TB
+        L2A -->|文件已存在| F3{队列中是否有任务在进行?}
+        F3 -->|是| FC[设置队列为完成状态]
+        F3 -->|否| FD[等待队列自然完成]
+        FC --> FE[抛出 QueueDrained 事件]
 
-  L2A -->|文件未上传| F4{并发队列是否为空?}
-  F4 -->|否| F5[不做任何事情，等待 QueueDrained]
-  F4 -->|是| QD2[抛出 QueueDrained 事件]
-  F5 -.-> QD
-  QD2 -.-> L3
+        L2A -->|文件不存在| F5[等待队列自然完成]
+    end
+
+    F5 -.-> QD
+    FD -.-> QD
+    FE -.-> L3
 ```
 
 ## 事件与状态定义
@@ -84,7 +112,6 @@ flowchart TD
 - FileHashed ：文件 Hash 完成。
 - QueueDrained ：并发队列全部成功完成（无任何失败）。
 - QueueAborted ：出现不可恢复失败，队列被中止（失败路径）。
-- QueueCancelled ：文件已存在等正常提前结束时，主动取消剩余队列（成功路径）。
 
 计数
 
@@ -112,15 +139,9 @@ flowchart TD
 - 不将"失败"视为"完成"的一部分；失败不会触发 QueueDrained 。
 - 任一分片 Hash 或文件 Hash 计算失败/中断，视为不可恢复失败，直接触发 QueueAborted。
 
-## 会话过期与恢复
+## 边界情况
 
-- `token` 默认有效期 1 小时。上传过程中若任一接口返回 `{ status: 'error', message: 'Invalid token' }` 或 401/403（且当前并非取消/完成清理态），视为不可恢复失败。
-- 客户端应立即触发 QueueAborted，取消全部未开始与进行中的分片任务；不进行续期或会话重建（若需续期属于未来扩展，不在本文档范围内）。
-
-边界情况
-
-- 禁止零分片：chunksLength 必须 ≥ 1。若检测到 0 分片，直接拒绝并返回错误响应。
-- 空文件：不允许空文件上传（size=0）。若检测到空文件，直接拒绝并返回错误响应。
+- 不允许空文件：不允许空文件上传（size=0）。
 
 ## 分片和文件 hash 计算
 
@@ -129,7 +150,7 @@ flowchart TD
 分片 hash 与文件 hash 算法与规范：
 
 - 分片 hash：对每个分片二进制数据计算 MD5（SparkMD5.ArrayBuffer）。输出为小写十六进制字符串，长度为 32。
-- 文件 hash（推荐）：将所有分片 hash 按分片顺序简单拼接成字符串 S，然后计算 MD5(S) 作为 fileHash。客户端与服务端必须严格一致（小写十六进制、无分隔符，或使用固定分隔符需一致）。
+- 文件 hash：将所有分片 hash 按分片顺序增量计算作为 fileHash。客户端与服务端必须严格一致（小写十六进制、无分隔符，或使用固定分隔符需一致）。
 - 分片大小：使用固定 chunkSize（最后一个分片可小于 chunkSize）。chunkSize 需在客户端与服务端保持一致，以保证“秒传”一致性。
 - Hash 计算失败/中断策略：任一分片或文件 Hash 计算失败/中断，直接触发 QueueAborted。
 
