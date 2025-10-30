@@ -195,6 +195,7 @@ flowchart TD
     - 其余字段走表单键值（与 DTO）：
       - `token: string`
       - `hash: string` 分片哈希
+      - `index: string` 分片索引
   - 成功响应：`200` `{ status: 'ok' }`
   - 幂等性：
     - 分片数据层面：同哈希的分片已存在则跳过保存；
@@ -240,6 +241,7 @@ flowchart TD
   - `blob: File` 分片二进制
   - `token: string`
   - `hash: string`
+  - `index: string`
 - MergeFileDto
   - `token: string` 非空
   - `hash: string` 非空

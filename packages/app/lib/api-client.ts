@@ -120,6 +120,7 @@ export class ApiClient {
     formData.append('blob', chunk.blob);
     formData.append('token', token);
     formData.append('hash', chunk.hash);
+    formData.append('index', chunk.index.toString());
 
     const response = await fetch(`${this.baseUrl}/file/uploadChunk`, {
       method: 'POST',
