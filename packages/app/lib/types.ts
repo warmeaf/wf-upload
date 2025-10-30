@@ -1,0 +1,210 @@
+/**
+ * 大文件分片上传系统类型定义
+ * 严格遵循文档中的API契约和事件定义
+ */
+
+// ============ 基础类型 ============
+
+export interface FileInfo {
+  name: string;
+  size: number;
+  type: string;
+  file: File;
+}
+
+export interface ChunkInfo {
+  index: number;
+  start: number;
+  end: number;
+  size: number;
+  blob: Blob;
+  hash?: string;
+}
+
+// ============ 事件类型 ============
+
+export interface ChunkHashedEvent {
+  type: 'ChunkHashed';
+  chunk: ChunkInfo & { hash: string };
+}
+
+export interface AllChunksHashedEvent {
+  type: 'AllChunksHashed';
+}
+
+export interface FileHashedEvent {
+  type: 'FileHashed';
+  fileHash: string;
+}
+
+export interface QueueDrainedEvent {
+  type: 'QueueDrained';
+}
+
+export interface QueueAbortedEvent {
+  type: 'QueueAborted';
+  error: Error;
+}
+
+export type UploadEvent = 
+  | ChunkHashedEvent 
+  | AllChunksHashedEvent 
+  | FileHashedEvent 
+  | QueueDrainedEvent 
+  | QueueAbortedEvent;
+
+// ============ 队列状态 ============
+
+export interface QueueStats {
+  totalChunks: number;
+  pending: number;
+  inFlight: number;
+  completed: number;
+  failed: number;
+  allChunksHashed: boolean;
+}
+
+export interface QueueTask {
+  chunk: ChunkInfo & { hash: string };
+  status: 'pending' | 'inFlight' | 'completed' | 'failed';
+  error?: Error;
+}
+
+// ============ API 类型 ============
+
+// POST /file/create
+export interface CreateFileRequest {
+  name: string;
+  size: number;
+  type: string;
+  chunksLength: number;
+}
+
+export interface CreateFileResponse {
+  status: 'ok';
+  token: string;
+}
+
+// POST /file/patchHash
+export interface PatchHashRequest {
+  token: string;
+  hash: string;
+  type: 'chunk' | 'file';
+}
+
+export interface PatchHashChunkResponse {
+  status: 'ok';
+  hasChunk: boolean;
+}
+
+export interface PatchHashFileResponse {
+  status: 'ok';
+  hasFile: boolean;
+  url?: string;
+}
+
+export interface PatchHashErrorResponse {
+  status: 'error';
+  message: 'Invalid token' | 'Invalid type' | 'Hash check failed';
+}
+
+export type PatchHashResponse = 
+  | PatchHashChunkResponse 
+  | PatchHashFileResponse 
+  | PatchHashErrorResponse;
+
+// POST /file/uploadChunk
+export interface UploadChunkRequest {
+  blob: File;
+  token: string;
+  hash: string;
+}
+
+export interface UploadChunkResponse {
+  status: 'ok';
+}
+
+// POST /file/merge
+export interface MergeFileRequest {
+  token: string;
+  hash: string;
+}
+
+export interface MergeFileResponse {
+  status: 'ok';
+  url: string;
+}
+
+export interface MergeFileErrorResponse {
+  status: 'error';
+  url: '';
+  message: 'File merge failed';
+}
+
+export type MergeResponse = MergeFileResponse | MergeFileErrorResponse;
+
+// ============ 配置类型 ============
+
+export interface UploadConfig {
+  chunkSize: number;
+  concurrency: number;
+  baseUrl: string;
+}
+
+// ============ Worker 消息类型 ============
+
+export interface WorkerStartMessage {
+  type: 'start';
+  file: File;
+  chunkSize: number;
+}
+
+export interface WorkerChunkHashedMessage {
+  type: 'chunkHashed';
+  chunk: ChunkInfo & { hash: string };
+}
+
+export interface WorkerAllChunksHashedMessage {
+  type: 'allChunksHashed';
+}
+
+export interface WorkerFileHashedMessage {
+  type: 'fileHashed';
+  fileHash: string;
+}
+
+export interface WorkerErrorMessage {
+  type: 'error';
+  error: string;
+}
+
+export type WorkerMessage = 
+  | WorkerChunkHashedMessage 
+  | WorkerAllChunksHashedMessage 
+  | WorkerFileHashedMessage 
+  | WorkerErrorMessage;
+
+// ============ 上传器状态 ============
+
+export interface UploaderState {
+  status: 'idle' | 'uploading' | 'completed' | 'failed';
+  token?: string;
+  fileHash?: string;
+  progress: {
+    chunksHashed: number;
+    chunksUploaded: number;
+    totalChunks: number;
+  };
+  error?: Error;
+  downloadUrl?: string;
+}
+
+// ============ 事件监听器类型 ============
+
+export type EventListener<T = any> = (event: T) => void;
+
+export interface EventEmitter {
+  on<T extends UploadEvent>(eventType: T['type'], listener: EventListener<T>): void;
+  off<T extends UploadEvent>(eventType: T['type'], listener: EventListener<T>): void;
+  emit<T extends UploadEvent>(event: T): void;
+}
