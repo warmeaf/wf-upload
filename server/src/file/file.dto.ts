@@ -55,18 +55,9 @@ export class UploadChunkDto {
   @IsNotEmpty({ message: '哈希值不能为空' })
   hash: string;
 
-  @IsNotEmpty({ message: '分片索引不能为空' })
   @IsString({ message: '分片索引必须是字符串' })
+  @IsNotEmpty({ message: '分片索引不能为空' })
   index: string;
-
-  // 客户端会携带分片的起止位置，但服务端不使用；设为可选以通过校验
-  @IsOptional()
-  @IsString({ message: '起始位置必须是字符串' })
-  start?: string;
-
-  @IsOptional()
-  @IsString({ message: '结束位置必须是字符串' })
-  end?: string;
 }
 
 export class MergeFileDto {

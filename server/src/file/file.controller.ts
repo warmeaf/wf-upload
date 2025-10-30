@@ -23,6 +23,11 @@ import {
   UploadChunkDto,
   MergeFileDto,
 } from './file.dto';
+import {
+  CreateFileResponse,
+  PatchHashResponse,
+  MergeResponse,
+} from './response.types';
 
 @Controller('file')
 export class FileController {
@@ -35,11 +40,7 @@ export class FileController {
 
   // 创建文件
   @Post('create')
-  async create(@Body() body: CreateFileDto): Promise<{
-    status: string;
-    token: string;
-    message?: string;
-  }> {
+  async create(@Body() body: CreateFileDto): Promise<CreateFileResponse> {
     const startTime = Date.now();
     try {
       const token = this.uniqueCodeService.generateUniqueCode();
@@ -83,7 +84,7 @@ export class FileController {
 
   // hash 校验
   @Post('patchHash')
-  async patchHash(@Body() body: PatchHashDto): Promise<any> {
+  async patchHash(@Body() body: PatchHashDto): Promise<PatchHashResponse> {
     const startTime = Date.now();
     try {
       const { token, hash, type } = body;
@@ -104,7 +105,7 @@ export class FileController {
           `Chunk hash check: hash=${hash}, exists=${exists}, duration: ${duration}ms`,
         );
 
-        return { status: 'ok', hasFile: exists };
+        return { status: 'ok', hasChunk: exists };
       } else if (type === 'file') {
         let url = '';
         const isHasFile = await this.fileService.checkFileExists(hash);
@@ -194,11 +195,7 @@ export class FileController {
 
   // 合并文件
   @Post('merge')
-  async mergeFile(@Body() body: MergeFileDto): Promise<{
-    status: string;
-    url: string;
-    message?: string;
-  }> {
+  async mergeFile(@Body() body: MergeFileDto): Promise<MergeResponse> {
     const startTime = Date.now();
     try {
       const { token, hash } = body;
@@ -225,20 +222,21 @@ export class FileController {
         };
       } else {
         // 表示这个文件上传之前中断过（比如上传过程中页面被刷新了）
-        // 根据 index 检查缺失部分的 hash，把缺失部分的 hash 补回来
+        // 查找已存储的相同文件 hash 的记录，如果该记录中的分片集合完整则补充到当前会话的分片集合
         await this.fileService.addMissingChunks(hash);
+        await this.fileService.generateAndSetFileUrl(hash);
         const file = await this.fileService.getFileByHash(hash);
         url = file.url;
 
         const duration = Date.now() - startTime;
         this.logger.log(
-          `File merge completed with missing chunks: hash=${hash}, url=${url}, duration: ${duration}ms`,
+          `File merge completed with missing chunks recovered: hash=${hash}, url=${url}, duration: ${duration}ms`,
         );
 
         return {
           status: 'ok',
           url,
-          message: 'Completed with missing chunks added',
+          message: 'Completed with missing chunks recovered',
         };
       }
     } catch (error) {

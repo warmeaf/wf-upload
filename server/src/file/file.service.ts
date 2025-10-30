@@ -166,21 +166,70 @@ export class FileService {
   }
 
   async addMissingChunks(hash: string): Promise<void> {
-    const file = await this.findFileByHash(hash);
-    const { chunksLength, chunks } = file;
+    const startTime = Date.now();
+    try {
+      const file = await this.findFileByHash(hash);
+      const { chunksLength, chunks } = file;
 
-    const missingChunks = [];
-    for (let i = 0; i < chunksLength; i++) {
-      if (!chunks.some((chunk) => chunk.index === i)) {
-        missingChunks.push({ hash, index: i });
+      // 1. 找出缺失的分片索引
+      const missingIndexes = [];
+      for (let i = 0; i < chunksLength; i++) {
+        if (!chunks.some((chunk) => chunk.index === i)) {
+          missingIndexes.push(i);
+        }
       }
-    }
 
-    if (missingChunks.length > 0) {
-      await this.fileModel.updateOne(
-        { fileHash: hash },
-        { $push: { chunks: { $each: missingChunks } } },
+      if (missingIndexes.length > 0) {
+        this.logger.log(
+          `Found ${missingIndexes.length} missing chunks for hash=${hash}, indexes: [${missingIndexes.join(', ')}]`,
+        );
+
+        // 2. 查找其他具有相同 fileHash 且分片集合完整的文件记录
+        const completeFile = await this.fileModel.findOne({
+          fileHash: hash,
+          $expr: { $eq: [{ $size: '$chunks' }, '$chunksLength'] },
+        });
+
+        if (completeFile) {
+          // 3. 从完整文件中获取缺失的分片信息
+          const missingChunks = completeFile.chunks.filter((chunk) =>
+            missingIndexes.includes(chunk.index),
+          );
+
+          if (missingChunks.length > 0) {
+            // 4. 将缺失的分片添加到当前文件
+            await this.fileModel.updateOne(
+              { fileHash: hash },
+              { $push: { chunks: { $each: missingChunks } } },
+            );
+
+            const duration = Date.now() - startTime;
+            this.logger.log(
+              `Successfully added ${missingChunks.length} missing chunks from complete file for hash=${hash}, duration: ${duration}ms`,
+            );
+          } else {
+            this.logger.warn(
+              `Complete file found but no matching chunks for missing indexes: hash=${hash}`,
+            );
+          }
+        } else {
+          this.logger.warn(
+            `No complete file found with same hash=${hash}, cannot recover missing chunks`,
+          );
+        }
+      } else {
+        const duration = Date.now() - startTime;
+        this.logger.log(
+          `No missing chunks found for hash=${hash}, duration: ${duration}ms`,
+        );
+      }
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error(
+        `Failed to add missing chunks for hash=${hash}, duration: ${duration}ms`,
+        error,
       );
+      throw error;
     }
   }
 
