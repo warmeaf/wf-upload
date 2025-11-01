@@ -207,9 +207,9 @@ const uploader = ref<any>(null)
 
 // 配置选项
 const config = reactive({
-  chunkSize: 2 * 1024 * 1024, // 2MB
+  chunkSize: 5 * 1024 * 1024, // 5MB
   concurrency: 3,
-  baseUrl: 'http://localhost:3000/api',
+  baseUrl: '',
 })
 
 // 文件选择处理
