@@ -214,7 +214,15 @@ export class FileUploader implements EventEmitter {
    * 处理分片检查
    */
   private async handleChunkCheck(hash: string): Promise<boolean> {
-    return await this.apiClient.checkChunk(this.state.token!, hash);
+    const exists = await this.apiClient.checkChunk(this.state.token!, hash);
+    
+    // 如果分片已存在，更新上传进度计数器（断点续传场景）
+    if (exists) {
+      this.state.progress.chunksUploaded++;
+      this.notifyProgress();
+    }
+    
+    return exists;
   }
 
   /**
