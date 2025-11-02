@@ -1,19 +1,15 @@
 import {
   Controller,
   Post,
-  Get,
-  Res,
-  Param,
-  Inject,
   Body,
   UseInterceptors,
   UploadedFile,
-  Req,
   Logger,
-  HttpStatus,
   HttpException,
+  HttpStatus,
+  Inject,
 } from '@nestjs/common';
-import { Express, Response, Request } from 'express';
+import { Express } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UniqueCodeService } from '../unique-code/unique-code.service';
 import { FileService } from './file.service';
@@ -26,7 +22,8 @@ import {
 import {
   CreateFileResponse,
   PatchHashResponse,
-  MergeResponse,
+  UploadChunkResponse,
+  MergeFileResponse,
 } from './response.types';
 
 @Controller('file')
@@ -38,279 +35,172 @@ export class FileController {
   @Inject(UniqueCodeService)
   private uniqueCodeService: UniqueCodeService;
 
-  // 创建文件
+  /**
+   * 1. 会话创建 (/file/create)
+   * 为新文件初始化上传会话
+   */
   @Post('create')
   async create(@Body() body: CreateFileDto): Promise<CreateFileResponse> {
-    const startTime = Date.now();
     try {
+      // 生成唯一token
       const token = this.uniqueCodeService.generateUniqueCode();
       if (!token) {
-        this.logger.error('Failed to generate unique token');
         throw new HttpException(
           'Failed to generate token',
           HttpStatus.INTERNAL_SERVER_ERROR,
         );
       }
 
-      const { name, size, type, chunksLength, hash } = body;
+      const { fileName, fileType, fileSize, chunksLength } = body;
 
+      // 在数据库中创建文件记录
       await this.fileService.createFile(
         token,
-        name,
-        size,
-        type,
+        fileName,
+        fileType,
+        fileSize,
         chunksLength,
-        hash || '',
       );
 
-      const duration = Date.now() - startTime;
       this.logger.log(
-        `File created: name=${name}, size=${size}, chunks=${chunksLength}, token=${token}, duration: ${duration}ms`,
+        `File session created: fileName=${fileName}, fileSize=${fileSize}, chunksLength=${chunksLength}, token=${token}`,
       );
 
       return {
-        status: 'ok',
+        code: 200,
         token,
       };
     } catch (error) {
-      const duration = Date.now() - startTime;
       this.logger.error(
-        `Failed to create file: name=${body.name}, duration: ${duration}ms`,
+        `Failed to create file session: ${error.message}`,
         error,
       );
       throw error;
     }
   }
 
-  // hash 校验
+  /**
+   * 2. 分块/文件状态检查 (/file/patchHash)
+   * 检查特定分块或整个文件是否已存在于服务器上
+   */
   @Post('patchHash')
   async patchHash(@Body() body: PatchHashDto): Promise<PatchHashResponse> {
-    const startTime = Date.now();
     try {
-      const { token, hash, type } = body;
+      const { token, hash, isChunk } = body;
 
+      // 验证token
       const valid = this.uniqueCodeService.verifyUniqueCode(token);
       if (!valid) {
-        this.logger.warn(`Invalid token for patchHash: ${token}`);
-        return {
-          status: 'error',
-          message: 'Invalid token',
-        };
+        throw new HttpException('Invalid token', HttpStatus.BAD_REQUEST);
       }
 
-      if (type === 'chunk') {
-        const exists = await this.fileService.checkChunkExists(hash);
-        const duration = Date.now() - startTime;
-        this.logger.log(
-          `Chunk hash check: hash=${hash}, exists=${exists}, duration: ${duration}ms`,
-        );
+      let exists = false;
 
-        return { status: 'ok', hasChunk: exists };
-      } else if (type === 'file') {
-        let url = '';
-        const isHasFile = await this.fileService.checkFileExists(hash);
-        if (isHasFile) {
-          await this.fileService.deleteFileByToken(token);
-          const file = await this.fileService.getFileByHash(hash);
-          url = file.url;
-        }
-
-        const duration = Date.now() - startTime;
-        this.logger.log(
-          `File hash check: hash=${hash}, exists=${isHasFile}, url=${url}, duration: ${duration}ms`,
-        );
-
-        return {
-          status: 'ok',
-          hasFile: isHasFile,
-          url,
-        };
+      if (isChunk) {
+        // 检查分块是否存在
+        exists = await this.fileService.checkChunkExists(hash);
+        this.logger.log(`Chunk hash check: hash=${hash}, exists=${exists}`);
       } else {
-        this.logger.warn(`Invalid type for patchHash: ${type}`);
-        return {
-          status: 'error',
-          message: 'Invalid type',
-        };
+        // 检查文件是否存在
+        exists = await this.fileService.checkFileExists(hash);
+        this.logger.log(`File hash check: hash=${hash}, exists=${exists}`);
       }
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      this.logger.error(
-        `Failed to check hash: hash=${body.hash}, type=${body.type}, duration: ${duration}ms`,
-        error,
-      );
+
       return {
-        status: 'error',
-        message: 'Hash check failed',
+        code: 200,
+        exists,
       };
-    }
-  }
-
-  // 上传分片
-  @Post('uploadChunk')
-  @UseInterceptors(FileInterceptor('blob'))
-  async uploadChunk(
-    @Res() response: Response,
-    @Body() chunk: UploadChunkDto,
-    @UploadedFile() blob: Express.Multer.File,
-  ): Promise<any> {
-    const startTime = Date.now();
-    try {
-      if (!blob || !blob.buffer) {
-        this.logger.error(
-          `No blob provided for chunk upload: token=${chunk.token}, hash=${chunk.hash}`,
-        );
-        return response.status(400).json({
-          status: 'error',
-          message: 'No file data provided',
-        });
-      }
-
-      await this.fileService.saveChunk(blob.buffer, chunk.hash);
-      await this.fileService.addChunkToFile(
-        chunk.token,
-        chunk.hash,
-        Number(chunk.index),
-      );
-
-      const duration = Date.now() - startTime;
-      this.logger.log(
-        `Chunk uploaded: token=${chunk.token}, hash=${chunk.hash}, index=${chunk.index}, size=${blob.buffer.length}, duration: ${duration}ms`,
-      );
-
-      return response.status(200).json({
-        status: 'ok',
-      });
     } catch (error) {
-      const duration = Date.now() - startTime;
-      this.logger.error(
-        `Failed to upload chunk: token=${chunk.token}, hash=${chunk.hash}, duration: ${duration}ms`,
-        error,
-      );
-      return response.status(500).json({
-        status: 'error',
-        message: 'Chunk upload failed',
-      });
+      this.logger.error(`Failed to check hash: ${error.message}`, error);
+      throw error;
     }
   }
 
-  // 合并文件
-  @Post('merge')
-  async mergeFile(@Body() body: MergeFileDto): Promise<MergeResponse> {
-    const startTime = Date.now();
+  /**
+   * 3. 分块上传 (/file/uploadChunk)
+   * 上传单个文件分块
+   */
+  @Post('uploadChunk')
+  @UseInterceptors(FileInterceptor('chunk'))
+  async uploadChunk(
+    @Body() body: UploadChunkDto,
+    @UploadedFile() chunk: Express.Multer.File,
+  ): Promise<UploadChunkResponse> {
     try {
       const { token, hash } = body;
-      let url = '';
 
-      this.logger.log(`File merge started: token=${token}, hash=${hash}`);
-
-      await this.fileService.updateFileHash(token, hash);
-      const valid = await this.fileService.isFileComplete(hash);
-
-      if (valid) {
-        await this.fileService.generateAndSetFileUrl(hash);
-        const file = await this.fileService.getFileByHash(hash);
-        url = file.url;
-
-        const duration = Date.now() - startTime;
-        this.logger.log(
-          `File merged successfully: hash=${hash}, url=${url}, duration: ${duration}ms`,
-        );
-
-        return {
-          status: 'ok',
-          url,
-        };
-      } else {
-        // 表示这个文件上传之前中断过（比如上传过程中页面被刷新了）
-        // 查找已存储的相同文件 hash 的记录，如果该记录中的分片集合完整则补充到当前会话的分片集合
-        await this.fileService.addMissingChunks(hash);
-        await this.fileService.generateAndSetFileUrl(hash);
-        const file = await this.fileService.getFileByHash(hash);
-        url = file.url;
-
-        const duration = Date.now() - startTime;
-        this.logger.log(
-          `File merge completed with missing chunks recovered: hash=${hash}, url=${url}, duration: ${duration}ms`,
-        );
-
-        return {
-          status: 'ok',
-          url,
-          message: 'Completed with missing chunks recovered',
-        };
+      // 验证token
+      const valid = this.uniqueCodeService.verifyUniqueCode(token);
+      if (!valid) {
+        throw new HttpException('Invalid token', HttpStatus.BAD_REQUEST);
       }
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      this.logger.error(
-        `Failed to merge file: token=${body.token}, hash=${body.hash}, duration: ${duration}ms`,
-        error,
+
+      if (!chunk || !chunk.buffer) {
+        throw new HttpException(
+          'No chunk data provided',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // 保存分块数据
+      await this.fileService.saveChunk(chunk.buffer, hash);
+
+      this.logger.log(
+        `Chunk uploaded: token=${token}, hash=${hash}, size=${chunk.buffer.length}`,
       );
+
       return {
-        status: 'error',
-        url: '',
-        message: 'File merge failed',
+        code: 200,
+        success: true,
       };
+    } catch (error) {
+      this.logger.error(`Failed to upload chunk: ${error.message}`, error);
+      throw error;
     }
   }
 
-  // 下载文件
-  @Get(':url')
-  async streamFile(
-    @Param('url') url: string,
-    @Res() res: Response,
-    // 获取请求对象以读取 Range 头
-    @Req() req: Request,
-  ) {
-    url = encodeURIComponent(url);
-    const file = await this.fileService.getFileByUrl(decodeURIComponent(url));
-    if (!file) {
-      res.status(404).send({
-        msg: '服务器没有该文件',
-      });
-    }
+  /**
+   * 4. 文件合并 (/file/merge)
+   * 文件上传的最后步骤，合并所有分块
+   */
+  @Post('merge')
+  async merge(@Body() body: MergeFileDto): Promise<MergeFileResponse> {
+    try {
+      const { token, fileHash, fileName, chunksLength, chunks } = body;
 
-    const disp = `attachment; filename*=UTF-8''${url};`;
-    const len = file.size;
-
-    // 解析 Range 请求头以支持断点续传
-    const range = req.headers['range'];
-    if (typeof range === 'string') {
-      const match = /bytes=(\d*)-(\d*)/.exec(range);
-      let start = 0;
-      let end = len - 1;
-      if (match) {
-        if (match[1] !== '') start = Math.max(0, parseInt(match[1], 10));
-        if (match[2] !== '') end = Math.min(len - 1, parseInt(match[2], 10));
+      // 验证token
+      const valid = this.uniqueCodeService.verifyUniqueCode(token);
+      if (!valid) {
+        throw new HttpException('Invalid token', HttpStatus.BAD_REQUEST);
       }
-      if (Number.isNaN(start) || start < 0) start = 0;
-      if (Number.isNaN(end) || end < start) end = len - 1;
 
-      const stream = await this.fileService.getFileStream(
-        decodeURIComponent(url),
-        start,
-        end,
+      // 验证分块数量
+      if (chunks.length !== chunksLength) {
+        throw new HttpException(
+          `Chunks count mismatch: expected ${chunksLength}, got ${chunks.length}`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // 更新文件记录并生成URL
+      const url = await this.fileService.updateFileForMerge(
+        token,
+        fileHash,
+        fileName,
+        chunks,
       );
 
-      res.status(206);
-      res.setHeader('Content-Disposition', disp);
-      res.setHeader('Content-Type', 'binary/octet-stream');
-      res.setHeader('Content-Range', `bytes ${start}-${end}/${len}`);
-      res.setHeader('Content-Length', end - start + 1);
-      res.setHeader('Accept-Ranges', 'bytes');
-
-      // 将文件流通过管道响应给客户端
-      stream.pipe(res);
-    } else {
-      const stream = await this.fileService.getFileStream(
-        decodeURIComponent(url),
+      this.logger.log(
+        `File merged successfully: token=${token}, fileHash=${fileHash}, url=${url}`,
       );
-      res.setHeader('Content-Disposition', disp);
-      res.setHeader('Content-Type', 'binary/octet-stream');
-      res.setHeader('content-length', len);
-      res.setHeader('Accept-Ranges', 'bytes');
 
-      // 将文件流通过管道响应给客户端
-      stream.pipe(res);
+      return {
+        code: 200,
+        url,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to merge file: ${error.message}`, error);
+      throw error;
     }
   }
 }
