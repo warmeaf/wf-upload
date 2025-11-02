@@ -18,7 +18,7 @@ import type {
   FileHashedEvent,
   QueueDrainedEvent,
   QueueAbortedEvent,
-  ChunkInfo
+  ChunkInfo,
 } from './types';
 
 export interface FileUploaderOptions {
@@ -46,6 +46,7 @@ export class FileUploader implements EventEmitter {
   private listeners: Map<string, Set<Function>> = new Map();
   private chunkHashes: string[] = [];
   private isMerged = false;
+  private currentFileInfo?: FileInfo;
 
   constructor(options: FileUploaderOptions) {
     this.options = options;
@@ -67,6 +68,7 @@ export class FileUploader implements EventEmitter {
   async upload(fileInfo: FileInfo): Promise<void> {
     try {
       this.resetState();
+      this.currentFileInfo = fileInfo;
       this.state.status = 'uploading';
       this.state.progress.totalChunks = Math.ceil(fileInfo.size / this.options.config.chunkSize);
       this.notifyProgress();
@@ -87,9 +89,9 @@ export class FileUploader implements EventEmitter {
    */
   private async createSession(fileInfo: FileInfo): Promise<void> {
     const response = await this.apiClient.createSession({
-      name: fileInfo.name,
-      size: fileInfo.size,
-      type: fileInfo.type,
+      fileName: fileInfo.name,
+      fileSize: fileInfo.size,
+      fileType: fileInfo.type,
       chunksLength: Math.ceil(fileInfo.size / this.options.config.chunkSize)
     });
 
@@ -180,7 +182,17 @@ export class FileUploader implements EventEmitter {
       }
 
       // 合并文件
-      const downloadUrl = await this.apiClient.mergeFile(this.state.token!, fileHash);
+      const chunks = this.chunkHashes.map((hash, index) => ({
+        index,
+        hash
+      }));
+      
+      const downloadUrl = await this.apiClient.mergeFile(
+        this.state.token!, 
+        fileHash, 
+        this.currentFileInfo!.name,
+        chunks
+      );
       this.state.downloadUrl = downloadUrl;
       this.isMerged = true;
 
@@ -277,6 +289,7 @@ export class FileUploader implements EventEmitter {
     };
     this.chunkHashes = [];
     this.isMerged = false;
+    this.currentFileInfo = undefined;
   }
 
   /**

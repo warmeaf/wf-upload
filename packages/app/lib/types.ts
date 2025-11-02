@@ -74,14 +74,14 @@ export interface QueueTask {
 
 // POST /file/create
 export interface CreateFileRequest {
-  name: string;
-  size: number;
-  type: string;
+  fileName: string;
+  fileSize: number;
+  fileType: string;
   chunksLength: number;
 }
 
 export interface CreateFileResponse {
-  status: 'ok';
+  code: 200;
   token: string;
 }
 
@@ -89,59 +89,44 @@ export interface CreateFileResponse {
 export interface PatchHashRequest {
   token: string;
   hash: string;
-  type: 'chunk' | 'file';
+  isChunk: boolean;
 }
 
-export interface PatchHashChunkResponse {
-  status: 'ok';
-  hasChunk: boolean;
+export interface PatchHashResponse {
+  code: 200;
+  exists: boolean;
 }
-
-export interface PatchHashFileResponse {
-  status: 'ok';
-  hasFile: boolean;
-  url?: string;
-}
-
-export interface PatchHashErrorResponse {
-  status: 'error';
-  message: 'Invalid token' | 'Invalid type' | 'Hash check failed';
-}
-
-export type PatchHashResponse = 
-  | PatchHashChunkResponse 
-  | PatchHashFileResponse 
-  | PatchHashErrorResponse;
 
 // POST /file/uploadChunk
 export interface UploadChunkRequest {
-  blob: File;
   token: string;
   hash: string;
+  // blob 通过 FormData 传递
 }
 
 export interface UploadChunkResponse {
-  status: 'ok';
+  code: 200;
+  success: boolean;
 }
 
 // POST /file/merge
 export interface MergeFileRequest {
   token: string;
+  fileHash: string;
+  fileName: string;
+  chunksLength: number;
+  chunks: ChunkDto[];
+}
+
+export interface ChunkDto {
+  index: number;
   hash: string;
 }
 
 export interface MergeFileResponse {
-  status: 'ok';
+  code: 200;
   url: string;
 }
-
-export interface MergeFileErrorResponse {
-  status: 'error';
-  url: '';
-  message: 'File merge failed';
-}
-
-export type MergeResponse = MergeFileResponse | MergeFileErrorResponse;
 
 // ============ 配置类型 ============
 
