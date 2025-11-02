@@ -1,60 +1,36 @@
 /**
  * 后端API响应类型定义
- * 与前端types.ts保持一致
+ * 严格按照README文档中的API响应格式定义
  */
 
 // ============ 基础响应类型 ============
 
 export interface BaseResponse {
-  status: 'ok' | 'error';
-}
-
-export interface ErrorResponse extends BaseResponse {
-  status: 'error';
-  message: string;
+  code: number;
 }
 
 // ============ API响应类型 ============
 
-// POST /file/create
+// 1. POST /file/create - 会话创建响应
 export interface CreateFileResponse extends BaseResponse {
-  status: 'ok';
+  code: 200;
   token: string;
 }
 
-// POST /file/patchHash
-export interface PatchHashChunkResponse extends BaseResponse {
-  status: 'ok';
-  hasChunk: boolean;
+// 2. POST /file/patchHash - 分块/文件状态检查响应
+export interface PatchHashResponse extends BaseResponse {
+  code: 200;
+  exists: boolean;
 }
 
-export interface PatchHashFileResponse extends BaseResponse {
-  status: 'ok';
-  hasFile: boolean;
-  url?: string;
-}
-
-export type PatchHashResponse =
-  | PatchHashChunkResponse
-  | PatchHashFileResponse
-  | ErrorResponse;
-
-// POST /file/uploadChunk
+// 3. POST /file/uploadChunk - 分块上传响应
 export interface UploadChunkResponse extends BaseResponse {
-  status: 'ok';
+  code: 200;
+  success: boolean;
 }
 
-// POST /file/merge
+// 4. POST /file/merge - 文件合并响应
 export interface MergeFileResponse extends BaseResponse {
-  status: 'ok';
+  code: 200;
   url: string;
-  message?: string;
 }
-
-export interface MergeFileErrorResponse extends BaseResponse {
-  status: 'error';
-  url: '';
-  message: string;
-}
-
-export type MergeResponse = MergeFileResponse | MergeFileErrorResponse;
