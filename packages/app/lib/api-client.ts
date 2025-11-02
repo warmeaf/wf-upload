@@ -8,12 +8,11 @@ import type {
   CreateFileResponse,
   PatchHashRequest,
   PatchHashResponse,
-  PatchHashChunkResponse,
-  PatchHashFileResponse,
   UploadChunkResponse,
   MergeFileRequest,
-  MergeResponse,
-  ChunkInfo
+  MergeFileResponse,
+  ChunkInfo,
+  ChunkDto
 } from './types';
 
 export class ApiClient {
@@ -45,13 +44,13 @@ export class ApiClient {
 
   /**
    * 检查分片Hash
-   * POST /file/patchHash (type: 'chunk')
+   * POST /file/patchHash (isChunk: true)
    */
   async checkChunk(token: string, hash: string): Promise<boolean> {
     const request: PatchHashRequest = {
       token,
       hash,
-      type: 'chunk'
+      isChunk: true
     };
 
     const response = await fetch(`${this.baseUrl}/file/patchHash`, {
@@ -68,22 +67,22 @@ export class ApiClient {
 
     const result: PatchHashResponse = await response.json();
     
-    if (result.status === 'error') {
-      throw new Error(result.message);
+    if (result.code !== 200) {
+      throw new Error('Check chunk failed');
     }
 
-    return (result as PatchHashChunkResponse).hasChunk;
+    return result.exists;
   }
 
   /**
    * 检查文件Hash（文件秒传）
-   * POST /file/patchHash (type: 'file')
+   * POST /file/patchHash (isChunk: false)
    */
   async checkFile(token: string, hash: string): Promise<{ exists: boolean; url?: string }> {
     const request: PatchHashRequest = {
       token,
       hash,
-      type: 'file'
+      isChunk: false
     };
 
     const response = await fetch(`${this.baseUrl}/file/patchHash`, {
@@ -100,14 +99,14 @@ export class ApiClient {
 
     const result: PatchHashResponse = await response.json();
     
-    if (result.status === 'error') {
-      throw new Error(result.message);
+    if (result.code !== 200) {
+      throw new Error('Check file failed');
     }
 
-    const fileResult = result as PatchHashFileResponse;
+    // 注意：后端目前只返回exists，如果需要url需要额外处理
     return {
-      exists: fileResult.hasFile,
-      url: fileResult.url
+      exists: result.exists,
+      url: result.exists ? undefined : undefined // 后端暂未提供url字段
     };
   }
 
@@ -117,10 +116,9 @@ export class ApiClient {
    */
   async uploadChunk(token: string, chunk: ChunkInfo & { hash: string }): Promise<void> {
     const formData = new FormData();
-    formData.append('blob', chunk.blob);
+    formData.append('chunk', chunk.blob);
     formData.append('token', token);
     formData.append('hash', chunk.hash);
-    formData.append('index', chunk.index.toString());
 
     const response = await fetch(`${this.baseUrl}/file/uploadChunk`, {
       method: 'POST',
@@ -133,7 +131,7 @@ export class ApiClient {
 
     const result: UploadChunkResponse = await response.json();
     
-    if (result.status !== 'ok') {
+    if (result.code !== 200 || !result.success) {
       throw new Error('Upload chunk failed');
     }
   }
@@ -142,10 +140,18 @@ export class ApiClient {
    * 合并文件
    * POST /file/merge
    */
-  async mergeFile(token: string, hash: string): Promise<string> {
+  async mergeFile(
+    token: string, 
+    fileHash: string, 
+    fileName: string, 
+    chunks: ChunkDto[]
+  ): Promise<string> {
     const request: MergeFileRequest = {
       token,
-      hash
+      fileHash,
+      fileName,
+      chunksLength: chunks.length,
+      chunks
     };
 
     const response = await fetch(`${this.baseUrl}/file/merge`, {
@@ -160,10 +166,10 @@ export class ApiClient {
       throw new Error(`Failed to merge file: ${response.status} ${response.statusText}`);
     }
 
-    const result: MergeResponse = await response.json();
+    const result: MergeFileResponse = await response.json();
     
-    if (result.status === 'error') {
-      throw new Error(result.message);
+    if (result.code !== 200) {
+      throw new Error('File merge failed');
     }
 
     return result.url;
