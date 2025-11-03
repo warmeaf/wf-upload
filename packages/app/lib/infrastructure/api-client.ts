@@ -13,7 +13,7 @@ import type {
   MergeFileResponse,
   ChunkInfo,
   ChunkDto,
-} from './types'
+} from '../domain/types'
 
 export class ApiClient {
   private baseUrl: string
@@ -205,3 +205,4 @@ export class ApiClient {
     return `${encodeURIComponent(filename)}_${fileHash}.${filename.split('.').pop()}`
   }
 }
+

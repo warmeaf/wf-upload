@@ -10,7 +10,7 @@ import type {
   EventEmitter,
   QueueDrainedEvent,
   QueueAbortedEvent,
-} from './types'
+} from '../domain/types'
 
 export interface UploadQueueOptions {
   concurrency: number
@@ -209,3 +209,4 @@ export class UploadQueue implements EventEmitter {
     }
   }
 }
+

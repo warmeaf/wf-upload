@@ -221,3 +221,4 @@ export interface EventEmitter {
   ): void
   emit<T extends UploadEvent>(event: T): void
 }
+

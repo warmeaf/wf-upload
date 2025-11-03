@@ -13,10 +13,10 @@ import type {
   FileHashedEvent,
   QueueAbortedEvent,
   ChunkInfo,
-} from './types'
+} from '../domain/types'
 import { WorkerPool } from './worker-pool'
-import { TaskQueue } from './task-queue'
-import { ResultBuffer } from './result-buffer'
+import { TaskQueue } from '../core/task-queue'
+import { ResultBuffer } from '../core/result-buffer'
 
 export class WorkerManager implements EventEmitter {
   // ============ 私有属性 ============
@@ -124,7 +124,7 @@ export class WorkerManager implements EventEmitter {
    * 创建Worker实例
    */
   private createWorker(): Worker {
-    return new Worker(new URL('./hash-worker.ts', import.meta.url), {
+    return new Worker(new URL('../infrastructure/hash-worker.ts', import.meta.url), {
       type: 'module',
     })
   }
@@ -244,3 +244,4 @@ export class WorkerManager implements EventEmitter {
     }
   }
 }
+

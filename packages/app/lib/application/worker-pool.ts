@@ -9,9 +9,9 @@ import type {
   WorkerTaskErrorMessage,
   QueueAbortedEvent,
   EventEmitter,
-} from './types'
-import { TaskQueue } from './task-queue'
-import { ResultBuffer } from './result-buffer'
+} from '../domain/types'
+import { TaskQueue } from '../core/task-queue'
+import { ResultBuffer } from '../core/result-buffer'
 
 export class WorkerPool {
   private workers: Worker[] = []
@@ -95,7 +95,7 @@ export class WorkerPool {
    * 创建Worker实例
    */
   private createWorker(): Worker {
-    return new Worker(new URL('./hash-worker.ts', import.meta.url), {
+    return new Worker(new URL('../infrastructure/hash-worker.ts', import.meta.url), {
       type: 'module',
     })
   }

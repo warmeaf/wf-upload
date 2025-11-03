@@ -11,7 +11,7 @@ import type {
   WorkerResultMessage,
   WorkerTaskErrorMessage,
   ChunkInfo,
-} from './types'
+} from '../domain/types'
 
 declare const self: Worker
 
@@ -176,3 +176,4 @@ async function processChunk(
     self.postMessage(errorMessage)
   }
 }
+
