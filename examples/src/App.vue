@@ -191,11 +191,7 @@
 
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
-import {
-  createUploaderWithDefaults,
-  type FileInfo,
-  type UploaderState,
-} from '@wf-upload/core'
+import { createUploaderWithDefaults, type UploaderState } from '@wf-upload/core'
 
 // 响应式数据
 const fileInput = ref<HTMLInputElement>()
@@ -251,14 +247,7 @@ const startUpload = async () => {
       },
     })
 
-    const fileInfo: FileInfo = {
-      name: selectedFile.value.name,
-      size: selectedFile.value.size,
-      type: selectedFile.value.type,
-      file: selectedFile.value,
-    }
-
-    await uploader.value.upload(fileInfo)
+    await uploader.value.upload(selectedFile.value)
   } catch (err) {
     error.value = (err as Error).message
   }

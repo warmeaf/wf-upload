@@ -6,190 +6,195 @@
 // ============ 基础类型 ============
 
 export interface FileInfo {
-  name: string;
-  size: number;
-  type: string;
-  file: File;
+  name: string
+  size: number
+  type: string
 }
 
 export interface ChunkInfo {
-  index: number;
-  start: number;
-  end: number;
-  size: number;
-  blob: Blob;
-  hash?: string;
+  index: number
+  start: number
+  end: number
+  size: number
+  blob: Blob
+  hash?: string
 }
 
 // ============ 事件类型 ============
 
 export interface ChunkHashedEvent {
-  type: 'ChunkHashed';
-  chunk: ChunkInfo & { hash: string };
+  type: 'ChunkHashed'
+  chunk: ChunkInfo & { hash: string }
 }
 
 export interface AllChunksHashedEvent {
-  type: 'AllChunksHashed';
+  type: 'AllChunksHashed'
 }
 
 export interface FileHashedEvent {
-  type: 'FileHashed';
-  fileHash: string;
+  type: 'FileHashed'
+  fileHash: string
 }
 
 export interface QueueDrainedEvent {
-  type: 'QueueDrained';
+  type: 'QueueDrained'
 }
 
 export interface QueueAbortedEvent {
-  type: 'QueueAborted';
-  error: Error;
+  type: 'QueueAborted'
+  error: Error
 }
 
-export type UploadEvent = 
-  | ChunkHashedEvent 
-  | AllChunksHashedEvent 
-  | FileHashedEvent 
-  | QueueDrainedEvent 
-  | QueueAbortedEvent;
+export type UploadEvent =
+  | ChunkHashedEvent
+  | AllChunksHashedEvent
+  | FileHashedEvent
+  | QueueDrainedEvent
+  | QueueAbortedEvent
 
 // ============ 队列状态 ============
 
 export interface QueueStats {
-  totalChunks: number;
-  pending: number;
-  inFlight: number;
-  completed: number;
-  failed: number;
-  allChunksHashed: boolean;
+  totalChunks: number
+  pending: number
+  inFlight: number
+  completed: number
+  failed: number
+  allChunksHashed: boolean
 }
 
 export interface QueueTask {
-  chunk: ChunkInfo & { hash: string };
-  status: 'pending' | 'inFlight' | 'completed' | 'failed';
-  error?: Error;
+  chunk: ChunkInfo & { hash: string }
+  status: 'pending' | 'inFlight' | 'completed' | 'failed'
+  error?: Error
 }
 
 // ============ API 类型 ============
 
 // POST /file/create
 export interface CreateFileRequest {
-  fileName: string;
-  fileSize: number;
-  fileType: string;
-  chunksLength: number;
+  fileName: string
+  fileSize: number
+  fileType: string
+  chunksLength: number
 }
 
 export interface CreateFileResponse {
-  code: 200;
-  token: string;
+  code: 200
+  token: string
 }
 
 // POST /file/patchHash
 export interface PatchHashRequest {
-  token: string;
-  hash: string;
-  isChunk: boolean;
+  token: string
+  hash: string
+  isChunk: boolean
 }
 
 export interface PatchHashResponse {
-  code: 200;
-  exists: boolean;
+  code: 200
+  exists: boolean
 }
 
 // POST /file/uploadChunk
 export interface UploadChunkRequest {
-  token: string;
-  hash: string;
+  token: string
+  hash: string
   // blob 通过 FormData 传递
 }
 
 export interface UploadChunkResponse {
-  code: 200;
-  success: boolean;
+  code: 200
+  success: boolean
 }
 
 // POST /file/merge
 export interface MergeFileRequest {
-  token: string;
-  fileHash: string;
-  fileName: string;
-  chunksLength: number;
-  chunks: ChunkDto[];
+  token: string
+  fileHash: string
+  fileName: string
+  chunksLength: number
+  chunks: ChunkDto[]
 }
 
 export interface ChunkDto {
-  index: number;
-  hash: string;
+  index: number
+  hash: string
 }
 
 export interface MergeFileResponse {
-  code: 200;
-  url: string;
+  code: 200
+  url: string
 }
 
 // ============ 配置类型 ============
 
 export interface UploadConfig {
-  chunkSize: number;
-  concurrency: number;
-  baseUrl: string;
+  chunkSize: number
+  concurrency: number
+  baseUrl: string
 }
 
 // ============ Worker 消息类型 ============
 
 export interface WorkerStartMessage {
-  type: 'start';
-  file: File;
-  chunkSize: number;
+  type: 'start'
+  file: File
+  chunkSize: number
 }
 
 export interface WorkerChunkHashedMessage {
-  type: 'chunkHashed';
-  chunk: ChunkInfo & { hash: string };
+  type: 'chunkHashed'
+  chunk: ChunkInfo & { hash: string }
 }
 
 export interface WorkerAllChunksHashedMessage {
-  type: 'allChunksHashed';
+  type: 'allChunksHashed'
 }
 
 export interface WorkerFileHashedMessage {
-  type: 'fileHashed';
-  fileHash: string;
+  type: 'fileHashed'
+  fileHash: string
 }
 
 export interface WorkerErrorMessage {
-  type: 'error';
-  error: string;
+  type: 'error'
+  error: string
 }
 
-export type WorkerMessage = 
-  | WorkerChunkHashedMessage 
-  | WorkerAllChunksHashedMessage 
-  | WorkerFileHashedMessage 
-  | WorkerErrorMessage;
+export type WorkerMessage =
+  | WorkerChunkHashedMessage
+  | WorkerAllChunksHashedMessage
+  | WorkerFileHashedMessage
+  | WorkerErrorMessage
 
 // ============ 上传器状态 ============
 
 export interface UploaderState {
-  status: 'idle' | 'uploading' | 'completed' | 'failed';
-  token?: string;
-  fileHash?: string;
+  status: 'idle' | 'uploading' | 'completed' | 'failed'
+  token?: string
+  fileHash?: string
   progress: {
-    chunksHashed: number;
-    chunksUploaded: number;
-    totalChunks: number;
-  };
-  error?: Error;
-  downloadUrl?: string;
+    chunksHashed: number
+    chunksUploaded: number
+    totalChunks: number
+  }
+  error?: Error
+  downloadUrl?: string
 }
 
 // ============ 事件监听器类型 ============
 
-export type EventListener<T = any> = (event: T) => void;
+export type EventListener<T = any> = (event: T) => void
 
 export interface EventEmitter {
-  on<T extends UploadEvent>(eventType: T['type'], listener: EventListener<T>): void;
-  off<T extends UploadEvent>(eventType: T['type'], listener: EventListener<T>): void;
-  emit<T extends UploadEvent>(event: T): void;
+  on<T extends UploadEvent>(
+    eventType: T['type'],
+    listener: EventListener<T>
+  ): void
+  off<T extends UploadEvent>(
+    eventType: T['type'],
+    listener: EventListener<T>
+  ): void
+  emit<T extends UploadEvent>(event: T): void
 }
