@@ -10,7 +10,7 @@ import type {
   AllChunksHashedEvent,
   FileHashedEvent,
   EventEmitter,
-} from './types'
+} from '../domain/types'
 
 interface ChunkResult {
   hash: string

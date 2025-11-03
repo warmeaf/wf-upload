@@ -3,9 +3,9 @@
  * 协调整个上传流程，严格按照文档描述的流程逻辑执行
  */
 
-import { WorkerManager } from './worker-manager'
-import { UploadQueue } from './upload-queue'
-import { ApiClient } from './api-client'
+import { WorkerManager } from '../application/worker-manager'
+import { UploadQueue } from '../core/upload-queue'
+import { ApiClient } from '../infrastructure/api-client'
 import SparkMD5 from 'spark-md5'
 
 import type {
@@ -19,7 +19,7 @@ import type {
   QueueDrainedEvent,
   QueueAbortedEvent,
   ChunkInfo,
-} from './types'
+} from '../domain/types'
 
 export interface FileUploaderOptions {
   config: UploadConfig
@@ -347,3 +347,4 @@ export class FileUploader implements EventEmitter {
     this.currentFileInfo = undefined
   }
 }
+

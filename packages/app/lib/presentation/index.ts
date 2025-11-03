@@ -6,13 +6,13 @@
 // ============ 导出主要类 ============
 
 export { FileUploader } from './file-uploader'
-export { ApiClient } from './api-client'
-export { UploadQueue } from './upload-queue'
-export { WorkerManager } from './worker-manager'
+export { ApiClient } from '../infrastructure/api-client'
+export { UploadQueue } from '../core/upload-queue'
+export { WorkerManager } from '../application/worker-manager'
 
 // ============ 导出类型定义 ============
 
-export type * from './types'
+export type * from '../domain/types'
 
 // ============ 便捷创建函数 ============
 
@@ -49,3 +49,4 @@ export function createUploaderWithDefaults(
     ...options,
   })
 }
+

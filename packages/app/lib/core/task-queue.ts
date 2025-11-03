@@ -3,7 +3,7 @@
  * 管理分片任务的分配，实现FIFO队列
  */
 
-import type { ChunkInfo } from './types'
+import type { ChunkInfo } from '../domain/types'
 
 export interface Task {
   taskId: string
