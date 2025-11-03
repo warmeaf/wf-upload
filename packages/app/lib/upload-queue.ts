@@ -19,6 +19,8 @@ export interface UploadQueueOptions {
 }
 
 export class UploadQueue implements EventEmitter {
+  // ============ 私有属性 ============
+
   private tasks: QueueTask[] = []
   private stats: QueueStats = {
     totalChunks: 0,
@@ -33,9 +35,13 @@ export class UploadQueue implements EventEmitter {
   private options: UploadQueueOptions
   private isAborted = false
 
+  // ============ 构造函数 ============
+
   constructor(options: UploadQueueOptions) {
     this.options = options
   }
+
+  // ============ 公共方法 ============
 
   addChunkTask(chunk: ChunkInfo & { hash: string }): void {
     if (this.isAborted) return
@@ -75,6 +81,26 @@ export class UploadQueue implements EventEmitter {
 
     this.checkQueueCompletion()
   }
+
+  get isCompleted(): boolean {
+    return (
+      this.stats.allChunksHashed &&
+      this.stats.pending === 0 &&
+      this.stats.inFlight === 0 &&
+      this.stats.failed === 0 &&
+      this.stats.completed === this.stats.totalChunks
+    )
+  }
+
+  getStats(): QueueStats {
+    return { ...this.stats }
+  }
+
+  getFailedTasks(): QueueTask[] {
+    return this.tasks.filter((task) => task.status === 'failed')
+  }
+
+  // ============ 队列处理 ============
 
   private async processQueue(): Promise<void> {
     if (this.isAborted || this.isCompleted) return
@@ -124,9 +150,6 @@ export class UploadQueue implements EventEmitter {
     }
   }
 
-  /**
-   * 完成任务
-   */
   private completeTask(task: QueueTask): void {
     task.status = 'completed'
     this.stats.inFlight--
@@ -135,16 +158,12 @@ export class UploadQueue implements EventEmitter {
     this.checkQueueCompletion()
   }
 
-  /**
-   * 处理任务错误
-   */
   private handleTaskError(task: QueueTask, error: Error): void {
     task.status = 'failed'
     task.error = error
     this.stats.inFlight--
     this.stats.failed++
 
-    // 按照文档要求：任一分片失败立即中止队列
     this.abortQueue(error)
   }
 
@@ -167,27 +186,8 @@ export class UploadQueue implements EventEmitter {
     }
   }
 
-  get isCompleted(): boolean {
-    return (
-      this.stats.allChunksHashed &&
-      this.stats.pending === 0 &&
-      this.stats.inFlight === 0 &&
-      this.stats.failed === 0 &&
-      this.stats.completed === this.stats.totalChunks
-    )
-  }
+  // ============ 事件监听器实现 ============
 
-  getStats(): QueueStats {
-    return { ...this.stats }
-  }
-
-  getFailedTasks(): QueueTask[] {
-    return this.tasks.filter((task) => task.status === 'failed')
-  }
-
-  /**
-   * 事件监听器实现
-   */
   on<T extends any>(eventType: string, listener: (event: T) => void): void {
     if (!this.listeners.has(eventType)) {
       this.listeners.set(eventType, new Set())

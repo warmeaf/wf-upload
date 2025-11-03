@@ -14,8 +14,12 @@ import type {
 } from './types'
 
 export class WorkerManager implements EventEmitter {
+  // ============ 私有属性 ============
+
   private worker: Worker | null = null
   private listeners: Map<string, Set<Function>> = new Map()
+
+  // ============ 公共方法 ============
 
   async startHashing(file: File, chunkSize: number): Promise<void> {
     this.worker && this.worker.terminate()
@@ -42,6 +46,15 @@ export class WorkerManager implements EventEmitter {
     }
     this.worker.postMessage(startMessage)
   }
+
+  terminate(): void {
+    if (this.worker) {
+      this.worker.terminate()
+      this.worker = null
+    }
+  }
+
+  // ============ Worker管理 ============
 
   private createWorker(): Worker {
     return new Worker(new URL('./hash-worker.ts', import.meta.url), {
@@ -84,19 +97,8 @@ export class WorkerManager implements EventEmitter {
     }
   }
 
-  /**
-   * 终止Worker
-   */
-  terminate(): void {
-    if (this.worker) {
-      this.worker.terminate()
-      this.worker = null
-    }
-  }
+  // ============ 事件监听器实现 ============
 
-  /**
-   * 事件监听器实现
-   */
   on<T extends any>(eventType: string, listener: (event: T) => void): void {
     if (!this.listeners.has(eventType)) {
       this.listeners.set(eventType, new Set())

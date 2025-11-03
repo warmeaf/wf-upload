@@ -3,16 +3,19 @@
  * 主入口文件，导出所有公共API
  */
 
-// 导出主要类
+// ============ 导出主要类 ============
+
 export { FileUploader } from './file-uploader'
 export { ApiClient } from './api-client'
 export { UploadQueue } from './upload-queue'
 export { WorkerManager } from './worker-manager'
 
-// 导出所有类型定义
+// ============ 导出类型定义 ============
+
 export type * from './types'
 
-// 导出便捷的创建函数
+// ============ 便捷创建函数 ============
+
 import { FileUploader, type FileUploaderOptions } from './file-uploader'
 
 /**
