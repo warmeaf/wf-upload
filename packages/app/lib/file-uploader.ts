@@ -57,7 +57,11 @@ export class FileUploader implements EventEmitter {
   constructor(options: FileUploaderOptions) {
     this.options = options
     this.apiClient = new ApiClient(options.config.baseUrl)
-    this.workerManager = new WorkerManager()
+    
+    // 传递enableMultiThreading配置项给WorkerManager（默认为true）
+    const enableMultiThreading =
+      options.config.enableMultiThreading !== false
+    this.workerManager = new WorkerManager(enableMultiThreading)
 
     this.uploadQueue = new UploadQueue({
       concurrency: options.config.concurrency,

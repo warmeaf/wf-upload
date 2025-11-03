@@ -133,6 +133,7 @@ export interface UploadConfig {
   chunkSize: number
   concurrency: number
   baseUrl: string
+  enableMultiThreading?: boolean // 是否启用多线程Hash计算，默认 true
 }
 
 // ============ Worker 消息类型 ============
@@ -160,6 +161,28 @@ export interface WorkerFileHashedMessage {
 export interface WorkerErrorMessage {
   type: 'error'
   error: string
+}
+
+// ============ 多线程Worker消息类型 ============
+
+export interface WorkerTaskMessage {
+  type: 'task'
+  taskId: string // 任务唯一标识
+  chunkIndex: number // 分片索引
+  blob: Blob // 分片数据
+}
+
+export interface WorkerResultMessage {
+  type: 'result'
+  taskId: string // 任务唯一标识
+  chunkIndex: number // 分片索引
+  hash: string // 分片Hash
+}
+
+export interface WorkerTaskErrorMessage {
+  type: 'error'
+  taskId?: string // 可选的失败任务ID
+  error: string // 错误信息
 }
 
 export type WorkerMessage =
