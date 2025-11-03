@@ -18,9 +18,13 @@ import type {
 export class ApiClient {
   private baseUrl: string
 
+  // ============ 构造函数 ============
+
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
   }
+
+  // ============ 会话管理 ============
 
   /**
    * 创建文件上传会话
@@ -43,6 +47,8 @@ export class ApiClient {
 
     return await response.json()
   }
+
+  // ============ Hash检查 ============
 
   /**
    * 检查分片Hash
@@ -112,6 +118,8 @@ export class ApiClient {
     return result.exists
   }
 
+  // ============ 分片上传 ============
+
   /**
    * 上传分片
    * POST /file/uploadChunk
@@ -142,6 +150,8 @@ export class ApiClient {
       throw new Error('Upload chunk failed')
     }
   }
+
+  // ============ 文件合并 ============
 
   /**
    * 合并文件
@@ -183,6 +193,8 @@ export class ApiClient {
 
     return result.url
   }
+
+  // ============ 文件下载 ============
 
   /**
    * 下载文件

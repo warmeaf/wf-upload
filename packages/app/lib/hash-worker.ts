@@ -8,6 +8,8 @@ import type { WorkerStartMessage, WorkerMessage, ChunkInfo } from './types'
 
 declare const self: Worker
 
+// ============ 文件分片 ============
+
 function createChunks(file: File, chunkSize: number): ChunkInfo[] {
   const chunks: ChunkInfo[] = []
   let start = 0
@@ -31,6 +33,8 @@ function createChunks(file: File, chunkSize: number): ChunkInfo[] {
 
   return chunks
 }
+
+// ============ Hash计算 ============
 
 async function calculateChunkHash(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -71,6 +75,8 @@ async function loopCalculateChunkHash(
   }
 }
 
+// ============ 消息发送 ============
+
 function postChunkHashedMessage(chunk: ChunkInfo & { hash: string }): void {
   const message: WorkerMessage = {
     type: 'chunkHashed',
@@ -94,6 +100,8 @@ function postFileHashedMessage(fileHash: string): void {
   self.postMessage(message)
 }
 
+// ============ 主处理流程 ============
+
 async function processFile(file: File, chunkSize: number) {
   try {
     const chunks = createChunks(file, chunkSize)
@@ -114,6 +122,8 @@ async function processFile(file: File, chunkSize: number) {
     self.postMessage(errorMessage)
   }
 }
+
+// ============ Worker消息监听 ============
 
 self.onmessage = (e: MessageEvent<WorkerStartMessage>) => {
   const { type, file, chunkSize } = e.data

@@ -29,10 +29,14 @@ export interface FileUploaderOptions {
 }
 
 export class FileUploader implements EventEmitter {
+  // ============ 依赖组件 ============
+
   private workerManager: WorkerManager
   private uploadQueue: UploadQueue
   private apiClient: ApiClient
   private options: FileUploaderOptions
+
+  // ============ 状态管理 ============
 
   private state: UploaderState = {
     status: 'idle',
@@ -48,6 +52,8 @@ export class FileUploader implements EventEmitter {
   private isMerged = false
   private currentFileInfo?: FileInfo
 
+  // ============ 构造函数 ============
+
   constructor(options: FileUploaderOptions) {
     this.options = options
     this.apiClient = new ApiClient(options.config.baseUrl)
@@ -61,6 +67,8 @@ export class FileUploader implements EventEmitter {
 
     this.setupEventListeners()
   }
+
+  // ============ 公共方法 ============
 
   async upload(file: File): Promise<void> {
     try {
@@ -76,6 +84,70 @@ export class FileUploader implements EventEmitter {
     } catch (error) {
       this.handleError(error as Error)
     }
+  }
+
+  getState(): UploaderState {
+    return { ...this.state }
+  }
+
+  abort(): void {
+    this.workerManager.terminate()
+    this.state.status = 'failed'
+    this.state.error = new Error('Upload aborted by user')
+    this.notifyProgress()
+  }
+
+  // ============ 事件监听器实现 ============
+
+  on<T extends any>(eventType: string, listener: (event: T) => void): void {
+    if (!this.listeners.has(eventType)) {
+      this.listeners.set(eventType, new Set())
+    }
+    this.listeners.get(eventType)!.add(listener)
+  }
+
+  off<T extends any>(eventType: string, listener: (event: T) => void): void {
+    const listeners = this.listeners.get(eventType)
+    if (listeners) {
+      listeners.delete(listener)
+    }
+  }
+
+  emit<T extends any>(event: T & { type: string }): void {
+    const listeners = this.listeners.get(event.type)
+    if (listeners) {
+      listeners.forEach((listener) => listener(event))
+    }
+  }
+
+  // ============ 初始化相关 ============
+
+  private setupEventListeners(): void {
+    this.workerManager.on<ChunkHashedEvent>(
+      'ChunkHashed',
+      this.handleChunkHashed.bind(this)
+    )
+    this.workerManager.on<AllChunksHashedEvent>(
+      'AllChunksHashed',
+      this.handleAllChunksHashed.bind(this)
+    )
+    this.workerManager.on<FileHashedEvent>(
+      'FileHashed',
+      this.handleFileHashed.bind(this)
+    )
+    this.workerManager.on<QueueAbortedEvent>(
+      'QueueAborted',
+      this.handleQueueAborted.bind(this)
+    )
+
+    this.uploadQueue.on<QueueDrainedEvent>(
+      'QueueDrained',
+      this.handleQueueDrained.bind(this)
+    )
+    this.uploadQueue.on<QueueAbortedEvent>(
+      'QueueAborted',
+      this.handleQueueAborted.bind(this)
+    )
   }
 
   private checkBeforeUpload(file: File): void {
@@ -113,33 +185,7 @@ export class FileUploader implements EventEmitter {
     this.state.token = response.token
   }
 
-  private setupEventListeners(): void {
-    this.workerManager.on<ChunkHashedEvent>(
-      'ChunkHashed',
-      this.handleChunkHashed.bind(this)
-    )
-    this.workerManager.on<AllChunksHashedEvent>(
-      'AllChunksHashed',
-      this.handleAllChunksHashed.bind(this)
-    )
-    this.workerManager.on<FileHashedEvent>(
-      'FileHashed',
-      this.handleFileHashed.bind(this)
-    )
-    this.workerManager.on<QueueAbortedEvent>(
-      'QueueAborted',
-      this.handleQueueAborted.bind(this)
-    )
-
-    this.uploadQueue.on<QueueDrainedEvent>(
-      'QueueDrained',
-      this.handleQueueDrained.bind(this)
-    )
-    this.uploadQueue.on<QueueAbortedEvent>(
-      'QueueAborted',
-      this.handleQueueAborted.bind(this)
-    )
-  }
+  // ============ 事件处理 ============
 
   private handleChunkHashed(event: ChunkHashedEvent): void {
     this.chunkHashes[event.chunk.index] = event.chunk.hash
@@ -242,6 +288,8 @@ export class FileUploader implements EventEmitter {
     this.notifyProgress()
   }
 
+  // ============ Hash计算 ============
+
   private calculateFileHashFromChunks(): string {
     const spark = new SparkMD5()
 
@@ -253,6 +301,8 @@ export class FileUploader implements EventEmitter {
 
     return spark.end().toLowerCase()
   }
+
+  // ============ 状态管理 ============
 
   private handleUploadCompleted(): void {
     this.state.status = 'completed'
@@ -291,37 +341,5 @@ export class FileUploader implements EventEmitter {
     this.chunkHashes = []
     this.isMerged = false
     this.currentFileInfo = undefined
-  }
-
-  getState(): UploaderState {
-    return { ...this.state }
-  }
-
-  abort(): void {
-    this.workerManager.terminate()
-    this.state.status = 'failed'
-    this.state.error = new Error('Upload aborted by user')
-    this.notifyProgress()
-  }
-
-  on<T extends any>(eventType: string, listener: (event: T) => void): void {
-    if (!this.listeners.has(eventType)) {
-      this.listeners.set(eventType, new Set())
-    }
-    this.listeners.get(eventType)!.add(listener)
-  }
-
-  off<T extends any>(eventType: string, listener: (event: T) => void): void {
-    const listeners = this.listeners.get(eventType)
-    if (listeners) {
-      listeners.delete(listener)
-    }
-  }
-
-  emit<T extends any>(event: T & { type: string }): void {
-    const listeners = this.listeners.get(event.type)
-    if (listeners) {
-      listeners.forEach((listener) => listener(event))
-    }
   }
 }
