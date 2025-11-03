@@ -32,6 +32,7 @@ export const DEFAULT_CONFIG = {
   chunkSize: 2 * 1024 * 1024, // 2MB
   concurrency: 3, // 并发数
   baseUrl: '/api', // API基础路径
+  enableMultiThreading: true, // 是否启用多线程
 }
 
 /**

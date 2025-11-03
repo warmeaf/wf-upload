@@ -4,7 +4,14 @@
  */
 
 import SparkMD5 from 'spark-md5'
-import type { WorkerStartMessage, WorkerMessage, ChunkInfo } from './types'
+import type {
+  WorkerStartMessage,
+  WorkerMessage,
+  WorkerTaskMessage,
+  WorkerResultMessage,
+  WorkerTaskErrorMessage,
+  ChunkInfo,
+} from './types'
 
 declare const self: Worker
 
@@ -125,10 +132,47 @@ async function processFile(file: File, chunkSize: number) {
 
 // ============ Worker消息监听 ============
 
-self.onmessage = (e: MessageEvent<WorkerStartMessage>) => {
-  const { type, file, chunkSize } = e.data
+self.onmessage = (
+  e: MessageEvent<WorkerStartMessage | WorkerTaskMessage>
+) => {
+  const { type } = e.data
 
   if (type === 'start') {
+    // 单线程模式：处理整个文件
+    const { file, chunkSize } = e.data as WorkerStartMessage
     processFile(file, chunkSize)
+  } else if (type === 'task') {
+    // 多线程模式：处理单个分片
+    const { taskId, chunkIndex, blob } = e.data as WorkerTaskMessage
+    processChunk(taskId, chunkIndex, blob)
+  }
+}
+
+// ============ 多线程模式：处理单个分片 ============
+
+async function processChunk(
+  taskId: string,
+  chunkIndex: number,
+  blob: Blob
+): Promise<void> {
+  try {
+    const hash = await calculateChunkHash(blob)
+
+    // 发送结果回主线程
+    const resultMessage: WorkerResultMessage = {
+      type: 'result',
+      taskId,
+      chunkIndex,
+      hash,
+    }
+    self.postMessage(resultMessage)
+  } catch (error) {
+    // 发送错误消息
+    const errorMessage: WorkerTaskErrorMessage = {
+      type: 'error',
+      taskId,
+      error: error instanceof Error ? error.message : String(error),
+    }
+    self.postMessage(errorMessage)
   }
 }
