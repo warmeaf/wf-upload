@@ -97,7 +97,10 @@ export class FileService {
       // 生成文件URL
       const index = fileName.lastIndexOf('.');
       const hashSuffix = `_${fileHash}`;
-      const url = fileName.slice(0, index) + hashSuffix + fileName.slice(index);
+      const url =
+        index === -1
+          ? fileName + hashSuffix
+          : fileName.slice(0, index) + hashSuffix + fileName.slice(index);
 
       // 更新文件记录
       await this.fileModel.updateOne(
