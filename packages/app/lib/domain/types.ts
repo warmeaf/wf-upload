@@ -204,6 +204,7 @@ export interface UploaderState {
   }
   error?: Error
   downloadUrl?: string
+  chunksHashDuration?: number // 分片 hash 计算总时间（毫秒），不包括文件 hash 计算
 }
 
 // ============ 事件监听器类型 ============

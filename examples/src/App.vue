@@ -117,6 +117,15 @@
             )
           }}</span>
         </div>
+        <div
+          v-if="state.chunksHashDuration !== undefined"
+          class="stat-item highlight"
+        >
+          <span class="stat-label">分片Hash计算时间:</span>
+          <span class="stat-value">{{
+            formatDuration(state.chunksHashDuration)
+          }}</span>
+        </div>
       </div>
     </div>
 
@@ -169,8 +178,25 @@
           v-model="config.baseUrl"
           type="text"
           :disabled="state?.status === 'uploading'"
-          placeholder="http://localhost:3000/api"
+          placeholder=""
         />
+      </div>
+      <div class="config-item">
+        <label>多线程Hash计算:</label>
+        <div class="switch-wrapper">
+          <label class="switch-container">
+            <input
+              v-model="config.enableMultiThreading"
+              type="checkbox"
+              :disabled="state?.status === 'uploading'"
+              class="switch-input"
+            />
+            <span class="switch-slider"></span>
+          </label>
+          <span class="switch-label">{{
+            config.enableMultiThreading ? '启用' : '禁用'
+          }}</span>
+        </div>
       </div>
     </div>
 
@@ -206,6 +232,7 @@ const config = reactive({
   chunkSize: 5 * 1024 * 1024, // 5MB
   concurrency: 3,
   baseUrl: '',
+  enableMultiThreading: true, // 默认启用多线程 hash 计算
 })
 
 // 文件选择处理
@@ -235,6 +262,7 @@ const startUpload = async () => {
         chunkSize: config.chunkSize,
         concurrency: config.concurrency,
         baseUrl: config.baseUrl,
+        enableMultiThreading: config.enableMultiThreading,
       },
       onProgress: (newState: UploaderState) => {
         state.value = newState
@@ -298,6 +326,19 @@ const getStatusText = (status: string): string => {
       return '上传失败'
     default:
       return status
+  }
+}
+
+const formatDuration = (milliseconds: number): string => {
+  if (milliseconds < 1000) {
+    return `${milliseconds}ms`
+  } else if (milliseconds < 60000) {
+    return `${(milliseconds / 1000).toFixed(2)}s`
+  } else {
+    const seconds = Math.floor(milliseconds / 1000)
+    const minutes = Math.floor(seconds / 60)
+    const remainingSeconds = seconds % 60
+    return `${minutes}m ${remainingSeconds}s`
   }
 }
 </script>
@@ -476,6 +517,8 @@ button {
 }
 
 .stat-label {
+  font-size: 12px;
+  align-self: flex-end;
   font-weight: 500;
   color: #495057;
 }
@@ -536,7 +579,7 @@ button {
 }
 
 .config-item label {
-  width: 120px;
+  width: 140px;
   font-weight: 500;
   color: #495057;
 }
@@ -554,6 +597,80 @@ button {
 .config-item input:disabled {
   background-color: #e9ecef;
   cursor: not-allowed;
+}
+
+.config-item .switch-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.switch-wrapper .switch-container {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+  cursor: pointer;
+}
+
+.switch-container .switch-input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch-slider {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  border-radius: 12px;
+  transition: background-color 0.3s;
+}
+
+.switch-slider::before {
+  position: absolute;
+  content: '';
+  height: 20px;
+  width: 20px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  border-radius: 50%;
+  transition: transform 0.3s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.switch-container .switch-input:checked + .switch-slider {
+  background-color: #3498db;
+}
+
+.switch-container .switch-input:checked + .switch-slider::before {
+  transform: translateX(26px);
+}
+
+.switch-container .switch-input:disabled + .switch-slider {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.switch-label {
+  font-size: 14px;
+  color: #495057;
+  user-select: none;
+}
+
+.stat-item.highlight {
+  background-color: #e3f2fd;
+  border: 1px solid #90caf9;
+}
+
+.stat-item.highlight .stat-value {
+  color: #1976d2;
+  font-weight: bold;
 }
 
 .instructions {

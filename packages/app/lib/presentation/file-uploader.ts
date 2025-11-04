@@ -51,6 +51,7 @@ export class FileUploader implements EventEmitter {
   private chunkHashes: string[] = []
   private isMerged = false
   private currentFileInfo?: FileInfo
+  private chunksHashStartTime?: number // 分片 hash 计算开始时间
 
   // ============ 构造函数 ============
 
@@ -84,6 +85,8 @@ export class FileUploader implements EventEmitter {
 
       await this.createSession(file, this.currentFileInfo)
 
+      // 记录分片 hash 计算开始时间
+      this.chunksHashStartTime = Date.now()
       await this.workerManager.startHashing(file, this.options.config.chunkSize)
     } catch (error) {
       this.handleError(error as Error)
@@ -200,6 +203,12 @@ export class FileUploader implements EventEmitter {
   }
 
   private handleAllChunksHashed(_event: AllChunksHashedEvent): void {
+    // 记录分片 hash 计算结束时间（不包括文件 hash 计算）
+    if (this.chunksHashStartTime !== undefined) {
+      this.state.chunksHashDuration = Date.now() - this.chunksHashStartTime
+      this.chunksHashStartTime = undefined
+      this.notifyProgress()
+    }
     this.uploadQueue.markAllChunksHashed()
   }
 
@@ -345,6 +354,7 @@ export class FileUploader implements EventEmitter {
     this.chunkHashes = []
     this.isMerged = false
     this.currentFileInfo = undefined
+    this.chunksHashStartTime = undefined
   }
 }
 
