@@ -37,6 +37,11 @@ export class WorkerManager implements EventEmitter {
   // ============ 公共方法 ============
 
   async startHashing(file: File, chunkSize: number): Promise<void> {
+    // 验证chunkSize
+    if (chunkSize <= 0) {
+      throw new Error('chunkSize must be greater than 0')
+    }
+
     // 清理之前的资源
     this.terminate()
 
@@ -155,13 +160,21 @@ export class WorkerManager implements EventEmitter {
     file: File,
     chunkSize: number
   ): Promise<void> {
-    return new Promise<void>((_resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       // 使用单个Worker，复用现有的hash-worker.ts逻辑
       this.worker = this.createWorker()
 
+      // 跟踪是否已经resolve，避免重复resolve
+      let isResolved = false
+
       this.worker.onmessage = (e: MessageEvent<WorkerMessage>) => {
         this.handleWorkerMessage(e.data)
-        // 注意：单线程模式下，完成是通过事件通知的，不需要resolve
+        
+        // 当收到fileHashed消息时，表示处理完成
+        if (e.data.type === 'fileHashed' && !isResolved) {
+          isResolved = true
+          resolve()
+        }
       }
 
       this.worker.onerror = (error) => {
@@ -170,7 +183,10 @@ export class WorkerManager implements EventEmitter {
           error: new Error(`Worker error: ${error.message}`),
         }
         this.emit(abortEvent)
-        reject(error)
+        if (!isResolved) {
+          isResolved = true
+          reject(error)
+        }
       }
 
       // 发送开始消息（使用现有的WorkerStartMessage格式）
@@ -180,9 +196,6 @@ export class WorkerManager implements EventEmitter {
         chunkSize,
       }
       this.worker.postMessage(startMessage)
-
-      // 单线程模式下，等待FileHashed事件表示完成
-      // 这里不需要resolve，因为完成是通过事件通知的
     })
   }
 

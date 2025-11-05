@@ -44,7 +44,7 @@ export class UploadQueue implements EventEmitter {
   // ============ 公共方法 ============
 
   addChunkTask(chunk: ChunkInfo & { hash: string }): void {
-    if (this.isAborted) return
+    if (this.isAborted || this.isCompleted) return
 
     const task: QueueTask = {
       chunk,
