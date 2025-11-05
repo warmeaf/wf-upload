@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { FileModule } from './file/file.module';
@@ -11,7 +11,16 @@ import { FileModule } from './file/file.module';
       isGlobal: true, // 让 ConfigModule 成为全局模块
       envFilePath: `.env.${process.env.NODE_ENV || 'development'}`, // 根据 NODE_ENV 加载对应的 .env 文件
     }),
-    MongooseModule.forRoot('mongodb://localhost:27017/wf-upload'),
+    MongooseModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        uri: configService.get<string>(
+          'MONGODB_URI',
+          'mongodb://localhost:27017/wf-upload',
+        ),
+      }),
+      inject: [ConfigService],
+    }),
     FileModule,
   ],
   controllers: [AppController],
