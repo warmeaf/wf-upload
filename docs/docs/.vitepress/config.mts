@@ -2,6 +2,7 @@ import { defineConfig } from 'vitepress'
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
+  base: '/wf-upload/',
   title: 'wf-upload',
   description: '基于文件分片的大文件上传解决方案',
   themeConfig: {
