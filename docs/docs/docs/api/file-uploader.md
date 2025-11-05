@@ -38,7 +38,7 @@ interface UploadConfig {
 
 ## 方法
 
-### upload(file: File): Promise<void>
+### upload(file: File): Promise&lt;void&gt;
 
 开始上传文件。
 
@@ -48,7 +48,7 @@ interface UploadConfig {
 
 **返回：**
 
-- `Promise<void>` - 上传完成的 Promise
+- `Promise&lt;void&gt;` - 上传完成的 Promise
 
 **示例：**
 
@@ -100,7 +100,7 @@ uploader.abort()
 - 取消后会终止所有正在进行的上传请求
 - Worker 线程会被终止
 
-### on<T>(eventType: string, listener: (event: T) => void): void
+### on&lt;T&gt;(eventType: string, listener: (event: T) => void): void
 
 监听事件。
 
@@ -117,7 +117,7 @@ uploader.on('ChunkHashed', (event) => {
 })
 ```
 
-### off<T>(eventType: string, listener: (event: T) => void): void
+### off&lt;T&gt;(eventType: string, listener: (event: T) => void): void
 
 取消事件监听。
 
@@ -138,7 +138,7 @@ uploader.on('ChunkHashed', handler)
 uploader.off('ChunkHashed', handler)
 ```
 
-### emit<T>(event: T & { type: string }): void
+### emit&lt;T&gt;(event: T & { type: string }): void
 
 触发事件（内部使用，通常不需要直接调用）。
 
