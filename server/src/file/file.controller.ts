@@ -5,8 +5,6 @@ import {
   UseInterceptors,
   UploadedFile,
   Logger,
-  HttpException,
-  HttpStatus,
   Inject,
 } from '@nestjs/common';
 import { Express } from 'express';
@@ -25,6 +23,8 @@ import {
   UploadChunkResponse,
   MergeFileResponse,
 } from './response.types';
+import { BusinessException } from '../common/errors/business-exception';
+import { ErrorCode } from '../common/errors/error-codes.enum';
 
 @Controller('file')
 export class FileController {
@@ -45,9 +45,8 @@ export class FileController {
       // 生成唯一token
       const token = this.uniqueCodeService.generateUniqueCode();
       if (!token) {
-        throw new HttpException(
-          'Failed to generate token',
-          HttpStatus.INTERNAL_SERVER_ERROR,
+        throw BusinessException.internalServerError(
+          ErrorCode.TOKEN_GENERATION_FAILED,
         );
       }
 
@@ -75,7 +74,13 @@ export class FileController {
         `Failed to create file session: ${error.message}`,
         error,
       );
-      throw error;
+      if (error instanceof BusinessException) {
+        throw error;
+      }
+      throw BusinessException.internalServerError(
+        ErrorCode.FILE_SESSION_CREATE_FAILED,
+        error.message,
+      );
     }
   }
 
@@ -91,7 +96,7 @@ export class FileController {
       // 验证token
       const valid = this.uniqueCodeService.verifyUniqueCode(token);
       if (!valid) {
-        throw new HttpException('Invalid token', HttpStatus.BAD_REQUEST);
+        throw BusinessException.invalidParameter(ErrorCode.INVALID_TOKEN);
       }
 
       let exists = false;
@@ -112,7 +117,13 @@ export class FileController {
       };
     } catch (error) {
       this.logger.error(`Failed to check hash: ${error.message}`, error);
-      throw error;
+      if (error instanceof BusinessException) {
+        throw error;
+      }
+      const errorCode = body.isChunk
+        ? ErrorCode.CHUNK_HASH_CHECK_FAILED
+        : ErrorCode.FILE_HASH_CHECK_FAILED;
+      throw BusinessException.internalServerError(errorCode, error.message);
     }
   }
 
@@ -132,14 +143,11 @@ export class FileController {
       // 验证token
       const valid = this.uniqueCodeService.verifyUniqueCode(token);
       if (!valid) {
-        throw new HttpException('Invalid token', HttpStatus.BAD_REQUEST);
+        throw BusinessException.invalidParameter(ErrorCode.INVALID_TOKEN);
       }
 
       if (!chunk || !chunk.buffer) {
-        throw new HttpException(
-          'No chunk data provided',
-          HttpStatus.BAD_REQUEST,
-        );
+        throw BusinessException.invalidParameter(ErrorCode.NO_CHUNK_DATA);
       }
 
       // 保存分块数据
@@ -155,7 +163,13 @@ export class FileController {
       };
     } catch (error) {
       this.logger.error(`Failed to upload chunk: ${error.message}`, error);
-      throw error;
+      if (error instanceof BusinessException) {
+        throw error;
+      }
+      throw BusinessException.internalServerError(
+        ErrorCode.CHUNK_SAVE_FAILED,
+        error.message,
+      );
     }
   }
 
@@ -171,14 +185,14 @@ export class FileController {
       // 验证token
       const valid = this.uniqueCodeService.verifyUniqueCode(token);
       if (!valid) {
-        throw new HttpException('Invalid token', HttpStatus.BAD_REQUEST);
+        throw BusinessException.invalidParameter(ErrorCode.INVALID_TOKEN);
       }
 
       // 验证分块数量
       if (chunks.length !== chunksLength) {
-        throw new HttpException(
+        throw BusinessException.invalidParameter(
+          ErrorCode.CHUNKS_COUNT_MISMATCH,
           `Chunks count mismatch: expected ${chunksLength}, got ${chunks.length}`,
-          HttpStatus.BAD_REQUEST,
         );
       }
 
@@ -200,7 +214,13 @@ export class FileController {
       };
     } catch (error) {
       this.logger.error(`Failed to merge file: ${error.message}`, error);
-      throw error;
+      if (error instanceof BusinessException) {
+        throw error;
+      }
+      throw BusinessException.internalServerError(
+        ErrorCode.FILE_MERGE_FAILED,
+        error.message,
+      );
     }
   }
 }
