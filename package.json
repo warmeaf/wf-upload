@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
+  "packageManager": "pnpm@8.15.3",
   "scripts": {
     "dev": "pnpm --filter wf-upload-examples run dev",
     "server:dev": "pnpm --filter wf-upload-server run start:dev",

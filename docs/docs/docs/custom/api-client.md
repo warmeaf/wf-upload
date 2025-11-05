@@ -289,4 +289,4 @@ class RetryableApiClient extends ApiClient {
 ## 参考
 
 - [ApiClient 源码](../../../packages/app/lib/infrastructure/api-client.ts)
-- [类型定义](../../api/types)
+- [类型定义](../api/types)
