@@ -38,9 +38,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Build packages
-        run: pnpm run build:packages
-
       - name: Build documentation with VitePress
         run: pnpm run docs:build
 
