@@ -16,7 +16,7 @@
     - 在独立的 Worker 线程中，逐个计算分片的 Hash（避免阻塞主线程）。
     - 每计算完一个分片，抛出 `ChunkHashed` 事件，并附带分片信息（索引、Hash、数据等）。
     - 所有分片 Hash 计算完毕后，抛出 `AllChunksHashed` 事件，标记不再有新任务产生。
-    - 随后，Worker 会按顺序增量计算出整个文件的 Hash，并抛出 `FileHashed` 事件。
+    - 随后，计算出整个文件的 Hash 并抛出 `FileHashed` 事件（单线程模式下由 Worker 计算，多线程模式下由主线程汇总计算）。
     - 如果 Hash 计算过程中出现任何错误，Worker 会抛出错误消息，触发 `QueueAborted` 事件。
 
 3.  **并发上传队列**:
@@ -26,7 +26,7 @@
     - 每个队列任务首先请求 `/file/patchHash`（`isChunk: true`）检查分片是否已存在于服务端（分片秒传）。
       - **已存在**: 该分片标记为上传成功（`completed`），无需重复上传，更新上传进度。
       - **不存在**: 请求 `/file/uploadChunk` 上传分片。上传成功后标记为完成，更新上传进度。
-    - 若任一分片检查或上传失败，立即中止队列：取消所有未开始和进行中的任务，设置 `failed` 计数，并抛出 `QueueAborted` 事件。
+    - 若任一分片检查或上传失败，立即中止队列：取消所有未开始的任务，忽略进行中任务的结果，设置 `failed` 计数，并抛出 `QueueAborted` 事件。
     - 当满足所有完成条件时（见下方"队列全部处理完成的判定条件"），队列会抛出 `QueueDrained` 事件。
 
 4.  **文件秒传检查**:
@@ -52,7 +52,7 @@
 >
 > - 只有在所有分片都成功处理（`failed === 0`）的情况下，才能触发 `QueueDrained` 事件及后续的合并请求。
 > - 整个流程中，主线程会持续更新上传进度（已计算 Hash 的分片数、已上传的分片数、总分片数），并通过回调函数通知外部。
-> - 如果用户主动中止上传，会终止 Worker 线程，将状态设置为 `failed`，并取消所有队列任务。
+> - 如果用户主动中止上传，会终止 Worker 线程，将状态设置为 `failed`，并中止队列调度（忽略进行中的任务）。
 
 ### 流程图 (Mermaid)
 
@@ -68,7 +68,7 @@ flowchart TD
         direction TB
         W1[逐个计算分片 Hash] -->|每完成一个| W1E[抛出 ChunkHashed 事件<br/>附带: chunk信息]
         W1 -->|全部完成| W1A[抛出 AllChunksHashed 事件]
-        W1A --> W2[按顺序增量计算文件 Hash]
+        W1A --> W2[计算文件 Hash<br/>(单线程:Worker / 多线程:主线程)]
         W2 --> W2E[抛出 FileHashed 事件<br/>附带: fileHash]
         W1 -.->|计算错误| W_ERR[抛出错误消息]
     end
@@ -139,7 +139,7 @@ flowchart TD
     subgraph USER_ABORT[用户中止]
         direction TB
         UA[用户调用 abort] --> UA1[终止 Worker 线程]
-        UA1 --> UA2[中止队列<br/>取消所有任务]
+        UA1 --> UA2[中止队列<br/>停止调度新任务]
         UA2 --> UA3[status: failed]
     end
 
@@ -261,7 +261,7 @@ flowchart TD
 - **算法**：将所有分片 Hash 按分片索引顺序进行增量计算
 - **计算方式**：使用 SparkMD5 的增量更新机制，依次 `append` 每个分片的 Hash 值，最后调用 `end()` 获取最终 Hash
 - **输出格式**：小写十六进制字符串，长度为 32 字符
-- **计算时机**：在所有分片 Hash 计算完成后，在 Worker 线程中计算
+- **计算时机**：在所有分片 Hash 计算完成后进行（单线程模式在 Worker 中计算，多线程模式在主线程中计算）
 - **备用计算**：如果文件 Hash 在 Worker 中计算失败或未完成，主线程会在合并前从已存储的分片 Hash 增量计算
 
 #### 分片大小
